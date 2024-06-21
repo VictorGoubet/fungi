@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "fungi"
+version = "0.1.0"
+description = "A simple educational P2P project demonstrating the principles of peer-to-peer connectivity and decentralized networking"
+authors = ["victor <victorgoubet@orange.fr>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
