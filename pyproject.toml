@@ -9,8 +9,12 @@ readme = "README.md"
 python = "^3.12"
 pystun3 = "^1.0.0"
 pydantic = "^2.7.4"
+streamlit = "^1.36.0"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+launch-fungi = "fungi.launcher:launch"
