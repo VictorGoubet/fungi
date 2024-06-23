@@ -1,7 +1,7 @@
 import logging
 
 
-def get_logger(name: str = "NodeLogger", level: int = logging.INFO) -> logging.Logger:
+def get_logger(name: str = "P2PLogger", level: int = logging.INFO) -> logging.Logger:
     """
     Get a configured logger.
 

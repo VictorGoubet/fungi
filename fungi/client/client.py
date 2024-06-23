@@ -3,22 +3,25 @@ import logging
 from asyncio import StreamReader, StreamWriter
 from typing import Optional
 
+import httpx
 import stun
 from pydantic import BaseModel, Field
 
-from fungi.network import Network
+from fungi.models.node import Node
+from fungi.tools.constants import SERVER_URL
 
 
-class Node(BaseModel):
-    """Representation of a single Node in the P2P network"""
+class Client(BaseModel):
+    """Client to join the P2P network"""
 
-    network: Optional[Network] = Field(default=None, description="The Network to which the Node belongs")
+    node: Node = Field(default=Node(), description="The current node")
     public_ip: Optional[str] = Field(default=None, description="Public IP address")
     public_port: Optional[int] = Field(default=None, description="Public port")
     logger: Optional[logging.Logger] = Field(default=None, description="Logger instance")
     connection_alive: bool = Field(default=False, description="Flag indicating if the connection is alive")
-    reader: Optional[asyncio.StreamReader] = Field(default=None, description="StreamReader for the connection")
-    writer: Optional[asyncio.StreamWriter] = Field(default=None, description="StreamWriter for the connection")
+    reader: Optional[StreamReader] = Field(default=None, description="StreamReader for the connection")
+    writer: Optional[StreamWriter] = Field(default=None, description="StreamWriter for the connection")
+    server_url: str = Field(default=SERVER_URL, description="URL of the network server")
 
     class Config:
         arbitrary_types_allowed = True
@@ -50,12 +53,13 @@ class Node(BaseModel):
         """
         try:
             _, external_ip, external_port = await self._async_get_ip_info()
-            self.public_ip = external_ip
-            self.public_port = external_port
+            self.node.public_ip = external_ip
+            self.node.public_port = external_port
             self._log(f"Discovered public IP: {self.public_ip}, public port: {self.public_port}")
         except Exception as e:
             self._log(f"Failed to discover public IP and port: {e}", level="error")
-            self.public_ip, self.public_port = None, None
+            self.node.public_ip = None
+            self.node.public_port = None
 
     async def initiate_connection(self, other_node: "Node") -> bool:
         """
@@ -64,7 +68,7 @@ class Node(BaseModel):
         :param Node other_node: The node to connect to.
         :return bool: True if the connection initiation is successful, False otherwise.
         """
-        if not self.public_ip or not self.public_port:
+        if not self.node.public_ip or not self.node.public_port:
             self._log("This node has not discovered its public IP and port yet.", level="warning")
             return False
 
@@ -146,51 +150,41 @@ class Node(BaseModel):
         self._log("Accepted a new client connection")
         await self._handle_connection(reader, writer)
 
-    async def join_network(self, network: "Network") -> None:
+    async def join_network(self) -> None:
         """
-        Join a given network.
-
-        :param Network network: The network to join.
+        Join the network by contacting the central server.
         """
-        self.network = network
-        await network.add_node(self)
         await self._discover_public_ip_and_port()
-        asyncio.create_task(self._start_server())
-        self._log(f"Joined network with {len(network.nodes)} nodes.")
+        node_data = self.node.model_dump()
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(f"{self.server_url}/nodes", json=node_data)
+                response.raise_for_status()
+                self._log(f"Joined network with response: {response.json()}")
+                asyncio.create_task(self._start_server())
+            except httpx.HTTPStatusError as e:
+                self._log(f"Failed to join network: {e.response.text}", level="error")
+            except httpx.RequestError as e:
+                self._log(f"An error occurred while requesting: {e}", level="error")
 
     async def leave_network(self) -> None:
         """
-        Leave the current network.
+        Leave the network by contacting the central server.
         """
-        if self.network:
-            await self.network.remove_node(self)
-            self._log("Left the network.")
-            self.connection_alive = False
-        else:
-            self._log("This node is not part of any network.", level="warning")
+        node_data = self.node.model_dump()
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(f"{self.server_url}/nodes", json=node_data)
+                response.raise_for_status()
+                self._log("Left the network.")
+                self.connection_alive = False
+            except httpx.HTTPStatusError as e:
+                self._log(f"Failed to leave network: {e.response.text}", level="error")
+            except httpx.RequestError as e:
+                self._log(f"An error occurred while requesting: {e}", level="error")
 
     def __str__(self) -> str:
         """
         String representation of the Node.
         """
-        return f"Node(public_ip={self.public_ip}, public_port={self.public_port})"
-
-
-# Example usage
-if __name__ == "__main__":
-
-    async def main():
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger("Node")
-
-        network = Network()
-
-        node1 = Node(logger=logger)
-        await node1.join_network(network)
-
-        node2 = Node(logger=logger)
-        await node2.join_network(network)
-
-        await node2.initiate_connection(node1)
-
-    asyncio.run(main())
+        return f"Node(public_ip={self.node.public_ip}, public_port={self.node.public_port})"

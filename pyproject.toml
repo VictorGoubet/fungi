@@ -12,9 +12,12 @@ pydantic = "^2.7.4"
 streamlit = "^1.36.0"
 
 
+redis = "^5.0.6"
+fastapi = "^0.111.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-launch-fungi = "fungi.launcher:launch"
+launch-client = "fungi.client.launcher:launch"
+launch-server = "fungi.server.launcher:launch"

@@ -1,0 +1,5 @@
+SERVER_URL = "http://localhost:8000"
+SERVER_PORT = 8000
+SERVER_HOST = "0.0.0.0"
+REDIS_HOST = "localhost"
+REDIS_PORT = 6379
