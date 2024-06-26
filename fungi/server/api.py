@@ -2,11 +2,9 @@ import json
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Request
+from node import Node
 from pydantic import ValidationError
-
-from fungi.models.node import Node
-from fungi.server.service import NetworkService
-from fungi.tools.constants import SERVER_HOST, SERVER_PORT
+from service import NetworkService
 
 app = FastAPI(
     title="P2P Network API",
@@ -109,9 +107,3 @@ async def remove_node(request: Request) -> None:
         await network_service.remove_node(node)
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)

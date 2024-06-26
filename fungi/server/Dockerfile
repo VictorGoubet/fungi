@@ -1,17 +1,43 @@
-# Use the official Python image from the Docker Hub
-FROM python:3.10-slim
+# Stage 1: Base stage for installing dependencies
+FROM python:3.10-slim as base
 
 # Set the working directory
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install any dependencies
+# Copy only the requirements file to leverage Docker cache
+COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the working directory contents into the container
-COPY . .
+# Stage 2: Final stage for setting up the application environment
+FROM base as final
 
-# Command to run the uvicorn server
-CMD ["uvicorn", "fungi.server.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Define build arguments
+ARG REDIS_HOST
+ARG REDIS_PORT
+ARG UVICORN_HOST
+ARG UVICORN_PORT
+
+# Set environment variables from the build arguments
+ENV REDIS_HOST=${REDIS_HOST} \
+    REDIS_PORT=${REDIS_PORT} \
+    UVICORN_HOST=${UVICORN_HOST} \
+    UVICORN_PORT=${UVICORN_PORT}
+
+# Expose the port specified by UVICORN_PORT
+EXPOSE ${UVICORN_PORT}
+
+# Copy the node module and the rest of the server directory
+COPY models/node.py ./models/node.py
+COPY server/ .
+
+# Copy the entrypoint script and ensure it is executable
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Command to run the application
+CMD ["/entrypoint.sh"]

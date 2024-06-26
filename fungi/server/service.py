@@ -1,19 +1,18 @@
 import asyncio
 import json
+import os
 from typing import List
 
 import redis
+from node import Node
 from pydantic import BaseModel, Field
-
-from fungi.models.node import Node
-from fungi.tools.constants import REDIS_HOST, REDIS_PORT
 
 
 class NetworkService(BaseModel):
     """Signaling server"""
 
-    redis_host: str = Field(default=REDIS_HOST, description="Redis host")
-    redis_port: int = Field(default=REDIS_PORT, description="Redis port")
+    redis_host: str = Field(default=os.environ["REDIS_HOST"], description="Redis host")
+    redis_port: int = Field(default=os.environ["REDIS_PORT"], description="Redis port")
     redis_db: int = Field(default=0, description="Redis database index")
     redis_client: redis.Redis = Field(default=None, init=False, description="Redis client")
     redis_key: str = Field(default="p2p_nodes", description="Redis key for storing nodes")
