@@ -32,11 +32,11 @@ ENV REDIS_HOST=${REDIS_HOST} \
 EXPOSE ${UVICORN_PORT}
 
 # Copy the node module and the rest of the server directory
-COPY models/node.py ./models/node.py
+COPY models/node.py ./node.py
 COPY server/ .
 
 # Copy the entrypoint script and ensure it is executable
-COPY entrypoint.sh /entrypoint.sh
+COPY server/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Command to run the application

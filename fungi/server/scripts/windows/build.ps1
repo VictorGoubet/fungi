@@ -1,11 +1,11 @@
 # Get the path of the current script
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-# Build the relative path to the 'server' directory, which is two levels up from the script directory
-$serverPath = Join-Path $scriptPath -ChildPath "..\..\.."
+# Build the relative path to the parent of the 'server' directory, which is two levels up from the script directory
+$parentPath = Join-Path $scriptPath -ChildPath "..\..\.."
 
 # Now create the absolute path to the Dockerfile inside the 'server' directory
-$dockerfilePath = Join-Path $serverPath -ChildPath "server\Dockerfile"
+$dockerfilePath = Join-Path $parentPath -ChildPath "server\Dockerfile"
 
 # Resolve the Dockerfile path to its absolute canonical form
 $resolvedDockerfilePath = Resolve-Path -Path $dockerfilePath
@@ -13,12 +13,12 @@ $resolvedDockerfilePath = Resolve-Path -Path $dockerfilePath
 # Write the path to check
 Write-Host "The Dockerfile path is: $resolvedDockerfilePath"
 
-# Ensure the Docker build context is correctly set as the 'server' directory
-$dockerBuildContext = Join-Path $serverPath -ChildPath "server"
+# Ensure the Docker build context is correctly set as the parent of the 'server' directory
+$dockerBuildContext = $parentPath
 
 # Load .env file and set each line as an environment variable
-if (Test-Path $serverPath\.env) {
-    Get-Content $serverPath\.env | ForEach-Object {
+if (Test-Path $parentPath\.env) {
+    Get-Content $parentPath\.env | ForEach-Object {
         $line = $_.Trim()
         if ($line -ne "" -and $line -notmatch "^#") {
             $key, $value = $line -split '=', 2
