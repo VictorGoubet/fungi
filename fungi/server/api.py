@@ -1,7 +1,7 @@
 import json
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from node import Node
 from pydantic import ValidationError
 from service import NetworkService
@@ -37,11 +37,7 @@ network_service = NetworkService()
     },
 )
 async def get_nodes() -> List[Node]:
-    """
-    Get the list of nodes in the network.
-
-    :return List[Node]: A list of nodes currently in the network.
-    """
+    """Get the list of nodes in the network"""
     return await network_service.list_nodes()
 
 
@@ -60,19 +56,9 @@ async def get_nodes() -> List[Node]:
         },
     },
 )
-async def add_node(request: Request) -> Node:
-    """
-    Add a new node to the network.
-
-    :param Request request: The request containing the node data.
-    :return Node: The added node.
-    :raises HTTPException: If the request data is invalid.
-    """
+async def add_node(node: Node) -> Node:
+    """Add a new node to the network"""
     try:
-        node_data = await request.json()
-        if isinstance(node_data, str):
-            node_data = json.loads(node_data)
-        node = Node(**node_data)
         await network_service.add_node(node)
         return node
     except (ValidationError, json.JSONDecodeError) as e:
@@ -92,18 +78,9 @@ async def add_node(request: Request) -> Node:
         },
     },
 )
-async def remove_node(request: Request) -> None:
-    """
-    Remove a node from the network.
-
-    :param Request request: The request containing the node data.
-    :raises HTTPException: If the request data is invalid.
-    """
+async def remove_node(node: Node) -> None:
+    """Remove a node from the network"""
     try:
-        node_data = await request.json()
-        if isinstance(node_data, str):
-            node_data = json.loads(node_data)
-        node = Node(**node_data)
         await network_service.remove_node(node)
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))

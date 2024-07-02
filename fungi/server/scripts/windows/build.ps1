@@ -10,15 +10,12 @@ $dockerfilePath = Join-Path $parentPath -ChildPath "server\Dockerfile"
 # Resolve the Dockerfile path to its absolute canonical form
 $resolvedDockerfilePath = Resolve-Path -Path $dockerfilePath
 
-# Write the path to check
-Write-Host "The Dockerfile path is: $resolvedDockerfilePath"
-
 # Ensure the Docker build context is correctly set as the parent of the 'server' directory
 $dockerBuildContext = $parentPath
 
 # Load .env file and set each line as an environment variable
-if (Test-Path $parentPath\.env) {
-    Get-Content $parentPath\.env | ForEach-Object {
+if (Test-Path $parentPath\server\.env) {
+    Get-Content $parentPath\server\.env | ForEach-Object {
         $line = $_.Trim()
         if ($line -ne "" -and $line -notmatch "^#") {
             $key, $value = $line -split '=', 2

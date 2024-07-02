@@ -26,26 +26,34 @@ class NetworkService(BaseModel):
         self.redis_client = redis.Redis(host=self.redis_host, port=self.redis_port, db=self.redis_db)
         self.redis_key = "p2p_nodes"
 
+    async def _add_node_to_storage(self, node: Node) -> None:
+        """
+        Add a node to the Redis storage.
+
+        :param Node node: The node to add.
+        """
+        node_key = f"{node.public_ip}:{node.public_port}"
+        node_data = node.model_dump()
+        await asyncio.to_thread(self.redis_client.hset, self.redis_key, node_key, json.dumps(node_data))
+
+    async def _remove_node_from_storage(self, node: Node) -> None:
+        """
+        Remove a node from the Redis storage.
+
+        :param Node node: The node to remove.
+        """
+        node_key = f"{node.public_ip}:{node.public_port}"
+        await asyncio.to_thread(self.redis_client.hdel, self.redis_key, node_key)
+
     async def _load_nodes_from_storage(self) -> List[Node]:
         """
         Load nodes from the Redis storage.
 
         :return List[Node]: A list of nodes currently in the network.
         """
-        nodes_json = await asyncio.to_thread(self.redis_client.get, self.redis_key)
-        if isinstance(nodes_json, str):
-            nodes_data = json.loads(nodes_json)
-            return [Node(**node_data) for node_data in nodes_data]
-        return []
-
-    async def _save_nodes_to_storage(self, nodes: List[Node]) -> None:
-        """
-        Save nodes to the Redis storage.
-
-        :param List[Node] nodes: The current list of nodes.
-        """
-        nodes_data = [node.model_dump() for node in nodes]
-        await asyncio.to_thread(self.redis_client.set, self.redis_key, json.dumps(nodes_data))
+        nodes_data = await asyncio.to_thread(self.redis_client.hgetall, self.redis_key)
+        nodes = [Node(**json.loads(node_data)) for node_data in nodes_data.values()]
+        return nodes
 
     async def add_node(self, node: Node) -> None:
         """
@@ -53,9 +61,7 @@ class NetworkService(BaseModel):
 
         :param Node node: The node to add to the network.
         """
-        nodes = await self._load_nodes_from_storage()
-        nodes.append(node)
-        await self._save_nodes_to_storage(nodes)
+        await self._add_node_to_storage(node)
 
     async def remove_node(self, node: Node) -> None:
         """
@@ -63,9 +69,7 @@ class NetworkService(BaseModel):
 
         :param Node node: The node to remove from the network.
         """
-        nodes = await self._load_nodes_from_storage()
-        nodes = [n for n in nodes if not (n.public_ip == node.public_ip and n.public_port == node.public_port)]
-        await self._save_nodes_to_storage(nodes)
+        await self._remove_node_from_storage(node)
 
     async def list_nodes(self) -> List[Node]:
         """
