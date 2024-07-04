@@ -174,10 +174,10 @@ class Client(BaseModel):
         """
         Leave the network by contacting the central server.
         """
-        node_data = self.node.model_dump()
+        params = self.node.model_dump()
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.delete(f"{self.server_url}/nodes", json=node_data)
+                response = await client.delete(f"{self.server_url}/nodes", params=params)
                 response.raise_for_status()
                 self._log("Left the network.")
                 self.connection_alive = False

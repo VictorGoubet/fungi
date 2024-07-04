@@ -1,7 +1,7 @@
 import json
 from typing import List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from node import Node
 from pydantic import ValidationError
 from service import NetworkService
@@ -78,8 +78,9 @@ async def add_node(node: Node) -> Node:
         },
     },
 )
-async def remove_node(node: Node) -> None:
+async def remove_node(public_ip: str = Query(...), public_port: int = Query(...)) -> None:
     """Remove a node from the network"""
+    node = Node(public_ip=public_ip, public_port=public_port)
     try:
         await network_service.remove_node(node)
     except (ValidationError, json.JSONDecodeError) as e:
