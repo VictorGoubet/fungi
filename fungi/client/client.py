@@ -2,7 +2,7 @@ import asyncio
 import logging
 from asyncio import StreamReader, StreamWriter
 from functools import partial
-from typing import Optional
+from typing import List, Optional
 
 import httpx
 import stun
@@ -58,36 +58,43 @@ class Client(BaseModel):
             _, external_ip, external_port = await self._async_get_ip_info()
             self.node.public_ip = external_ip
             self.node.public_port = external_port
-            self._log(f"Discovered public IP: {self.public_ip}, public port: {self.public_port}")
+            self._log(f"Discovered public IP: {self.node.public_ip}, public port: {self.node.public_port}")
         except Exception as e:
             self._log(f"Failed to discover public IP and port: {e}", level="error")
             self.node.public_ip = None
             self.node.public_port = None
 
-    async def initiate_connection(self, other_node: "Node") -> bool:
+    async def initiate_connection(self, other_node: "Node") -> dict:
         """
         Initiate a connection to another node.
 
         :param Node other_node: The node to connect to.
-        :return bool: True if the connection initiation is successful, False otherwise.
+        :return dict: The status of the initialization.
         """
+        status = {"status": "success", "message": None}
         if not self.node.public_ip or not self.node.public_port:
-            self._log("This node has not discovered its public IP and port yet.", level="warning")
-            return False
+            err = "This node has not discovered its public IP and port yet."
+            status["status"], status["message"] = "fail", err
+            self._log(err, level="warning")
+            return status
 
         if not other_node.public_ip or not other_node.public_port:
-            self._log(f"The other node {other_node} has not discovered its public IP and port yet.", level="warning")
-            return False
+            err = f"The other node {other_node} has not discovered its public IP and port yet."
+            status["status"], status["message"] = "fail", err
+            self._log(err, level="warning")
+            return status
 
         self._log(f"Connecting to {other_node.public_ip}:{other_node.public_port}")
 
         try:
             reader, writer = await asyncio.open_connection(other_node.public_ip, other_node.public_port)
             await self._handle_connection(reader, writer)
-            return True
+            return status
         except Exception as e:
-            self._log(f"Failed to connect to {other_node.public_ip}:{other_node.public_port}: {e}", level="error")
-            return False
+            err = f"Failed to connect to {other_node.public_ip}:{other_node.public_port}: {e}"
+            status["status"], status["message"] = "fail", err
+            self._log(err, level="error")
+            return status
 
     async def _handle_connection(self, reader: StreamReader, writer: StreamWriter) -> None:
         """
@@ -138,8 +145,8 @@ class Client(BaseModel):
         """
         Start the server to accept incoming connections.
         """
-        server = await asyncio.start_server(self._handle_client, "0.0.0.0", self.public_port)
-        self._log(f"Serving on {self.public_ip}:{self.public_port}")
+        server = await asyncio.start_server(self._handle_client, "0.0.0.0", self.node.public_port)
+        self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
         async with server:
             await server.serve_forever()
 
@@ -153,41 +160,86 @@ class Client(BaseModel):
         self._log("Accepted a new client connection")
         await self._handle_connection(reader, writer)
 
-    async def join_network(self) -> None:
+    async def join_network(self) -> dict:
         """
         Join the network by contacting the central server.
+
+        :return dict: The status of the request
         """
+        status = {"status": "success", "message": None}
         await self._discover_public_ip_and_port()
         node_data = self.node.model_dump()
         async with httpx.AsyncClient() as client:
             try:
+                self._log("Joining the network..")
                 response = await client.post(f"{self.server_url}/nodes", json=node_data)
                 response.raise_for_status()
-                self._log(f"Joined network with response: {response.json()}")
                 asyncio.create_task(self._start_server())
+                self._log("Joined network successfully")
             except httpx.HTTPStatusError as e:
-                self._log(f"Failed to join network: {e.response.text}", level="error")
+                err = f"Failed to join network: {e.response.text}"
+                status["status"], status["message"] = "fail", err
+                self._log(err, level="error")
             except httpx.RequestError as e:
-                self._log(f"An error occurred while requesting: {e}", level="error")
+                err = f"An error occurred while requesting: {e}"
+                status["status"], status["message"] = "fail", err
+                self._log(err, level="error")
+        return status
 
-    async def leave_network(self) -> None:
+    async def leave_network(self) -> dict:
         """
         Leave the network by contacting the central server.
+
+        :return dict: The status of the request
         """
+        status = {"status": "success", "message": None}
         params = self.node.model_dump()
         async with httpx.AsyncClient() as client:
             try:
+                self._log("Leaving the network..")
                 response = await client.delete(f"{self.server_url}/nodes", params=params)
                 response.raise_for_status()
                 self._log("Left the network.")
                 self.connection_alive = False
             except httpx.HTTPStatusError as e:
-                self._log(f"Failed to leave network: {e.response.text}", level="error")
+                err = f"Failed to leave network: {e.response.text}"
+                status["status"], status["message"] = "fail", err
+                self._log(err, level="error")
+            except httpx.RequestError as e:
+                err = f"An error occurred while requesting: {e}"
+                status["status"], status["message"] = "fail", err
+                self._log(err, level="error")
+        return status
+
+    async def get_nodes(self) -> List[Node]:
+        """Get the list of the current nodes on the network
+
+        :return List[Node]: The list of nodes on the network.
+        """
+        nodes = []
+        async with httpx.AsyncClient() as client:
+            try:
+                self._log("Getting nodes on network...")
+                response = await client.get(f"{SERVER_URL}/nodes")
+                response.raise_for_status()
+                nodes = [Node(**x) for x in response.json()]
+                self._log("Got nodes successfully")
+            except httpx.HTTPStatusError as e:
+                self._log(f"Failed to get nodes: {e.response.text}", level="error")
             except httpx.RequestError as e:
                 self._log(f"An error occurred while requesting: {e}", level="error")
+        return nodes
 
     def __str__(self) -> str:
         """
         String representation of the Node.
         """
         return f"Node(public_ip={self.node.public_ip}, public_port={self.node.public_port})"
+
+
+async def main():
+    c = Client()
+    print(await c.join_network())
+
+
+asyncio.run(main())

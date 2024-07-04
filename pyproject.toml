@@ -13,9 +13,10 @@ streamlit = "^1.36.0"
 
 pystun3 = "^2.0.0"
 nest-asyncio = "^1.6.0"
+gradio = "^4.37.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-launch-fungi = "fungi.client.launcher:launch"
+launch-fungi = "fungi.client.app:main"
