@@ -6,7 +6,7 @@ authors = ["victor <victorgoubet@orange.fr>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.10"
 pystun3 = "^1.0.0"
 pydantic = "^2.7.4"
 streamlit = "^1.36.0"
@@ -17,4 +17,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-launch = "fungi.client.launcher:launch"
+launch-fungi = "fungi.client.launcher:launch"
