@@ -7,11 +7,12 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-pystun3 = "^1.0.0"
 pydantic = "^2.7.4"
 streamlit = "^1.36.0"
 
 
+pystun3 = "^2.0.0"
+nest-asyncio = "^1.6.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

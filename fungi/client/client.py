@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from asyncio import StreamReader, StreamWriter
+from functools import partial
 from typing import Optional
 
 import httpx
@@ -42,10 +43,12 @@ class Client(BaseModel):
     async def _async_get_ip_info(self) -> tuple:
         """Async version of the get ip info stun method
 
-        :return tuple: The public discovered ip and port
+        :return tuple: The public discovered IP and port
         """
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, stun.get_ip_info)
+        stun_server = ("stun.l.google.com", 19302)
+        get_ip_info_partial = partial(stun.get_ip_info, stun_host=stun_server[0], stun_port=stun_server[1])
+        return await loop.run_in_executor(None, get_ip_info_partial)
 
     async def _discover_public_ip_and_port(self) -> None:
         """

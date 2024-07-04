@@ -412,6 +412,17 @@ files = [
 ]
 
 [[package]]
+name = "nest-asyncio"
+version = "1.6.0"
+description = "Patch asyncio to allow nested event loops"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c"},
+    {file = "nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe"},
+]
+
+[[package]]
 name = "numpy"
 version = "2.0.0"
 description = "Fundamental package for array computing in Python"
@@ -516,9 +527,9 @@ files = [
 
 [package.dependencies]
 numpy = [
+    {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
     {version = ">=1.22.4", markers = "python_version < \"3.11\""},
     {version = ">=1.23.2", markers = "python_version == \"3.11\""},
-    {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -729,8 +740,8 @@ files = [
 annotated-types = ">=0.4.0"
 pydantic-core = "2.20.0"
 typing-extensions = [
-    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
     {version = ">=4.12.2", markers = "python_version >= \"3.13\""},
+    {version = ">=4.6.1", markers = "python_version < \"3.13\""},
 ]
 
 [package.extras]
@@ -871,14 +882,13 @@ windows-terminal = ["colorama (>=0.4.6)"]
 
 [[package]]
 name = "pystun3"
-version = "1.0.0"
+version = "2.0.0"
 description = "A Python STUN client for getting NAT type and external IP (RFC 3489)"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pystun3-1.0.0-py2-none-any.whl", hash = "sha256:df9c4c4a5b27f520472c6a7547ca24ac39148b0fc5f6f500275161258e250019"},
-    {file = "pystun3-1.0.0-py3-none-any.whl", hash = "sha256:f080e739880cda781fa588a945b4d5bed0858e2ceab40143a08973ec674f9e72"},
-    {file = "pystun3-1.0.0.tar.gz", hash = "sha256:abafa1d957741df4bcc4cd2298a423db5831fec2600a62719210ea115dddc8f9"},
+    {file = "pystun3-2.0.0-py3-none-any.whl", hash = "sha256:4824c72d2c8c0297df92dbdf7cc57b346d6cf0de4e5a428c3be12d28a8bce0f3"},
+    {file = "pystun3-2.0.0.tar.gz", hash = "sha256:99abfe83df69fd0f6278e9be1456827fafb9e4e25efed8074d15b754ac9b1fee"},
 ]
 
 [[package]]
@@ -1268,4 +1278,4 @@ watchmedo = ["PyYAML (>=3.10)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "ca6dd79f4294d6c6a8d67578a427da61905778737dda300a97a9556405675fc0"
+content-hash = "7157d30a87d6541f32b7043fdf5e865ce81b2d004a8aece9974a29d306da3c75"

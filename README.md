@@ -50,7 +50,6 @@ Note: be sure to have the good signaling server host and port in the tools/const
 
 ```python
 SERVER_URL = "http://localhost:8000"
-SERVER_PORT = 8000
 ```
 
 
