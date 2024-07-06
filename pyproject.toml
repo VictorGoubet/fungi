@@ -8,11 +8,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 pydantic = "^2.7.4"
-streamlit = "^1.36.0"
 
 
 pystun3 = "^2.0.0"
-nest-asyncio = "^1.6.0"
 gradio = "^4.37.2"
 [build-system]
 requires = ["poetry-core"]

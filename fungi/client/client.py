@@ -69,11 +69,12 @@ class Client(BaseModel):
             self.node.public_ip = None
             self.node.public_port = None
 
-    async def initiate_connection(self, other_node: "Node") -> dict:
+    async def initiate_connection(self, other_node: "Node", timeout: int = 30) -> dict:
         """
-        Initiate a connection to another node.
+        Initiate a connection to another node, retrying until a timeout.
 
         :param Node other_node: The node to connect to.
+        :param int timeout: The timeout period in seconds for retrying the connection.
         :return dict: The status of the initialization.
         """
         status = {"status": "success", "message": None}
@@ -89,17 +90,20 @@ class Client(BaseModel):
             self._log(err, level="warning")
             return status
 
-        self._log(f"Connecting to {other_node.public_ip}:{other_node.public_port}")
+        end_time = asyncio.get_event_loop().time() + timeout
 
-        try:
-            reader, writer = await asyncio.open_connection(other_node.public_ip, other_node.public_port)
-            await self._handle_connection(reader, writer)
-            return status
-        except Exception as e:
-            err = f"Failed to connect to {other_node.public_ip}:{other_node.public_port}: {e}"
-            status["status"], status["message"] = "fail", err
-            self._log(err, level="error")
-            return status
+        while asyncio.get_event_loop().time() < end_time:
+            try:
+                self._log(f"Sending connection request to {other_node.public_ip}:{other_node.public_port}..")
+                reader, writer = await asyncio.open_connection(other_node.public_ip, other_node.public_port)
+                await self._handle_connection(reader, writer)
+                return status
+            except Exception:
+                await asyncio.sleep(1)
+
+        status["status"], status["message"] = "fail", f"Timed out after {timeout} seconds."
+        self._log(status["message"], level="error")
+        return status
 
     async def _handle_connection(self, reader: StreamReader, writer: StreamWriter) -> None:
         """
