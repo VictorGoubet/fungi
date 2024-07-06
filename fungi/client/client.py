@@ -2,7 +2,7 @@ import asyncio
 import logging
 from asyncio import StreamReader, StreamWriter
 from functools import partial
-from typing import List, Optional
+from typing import Callable, List, Optional, Union
 
 import httpx
 import stun
@@ -18,11 +18,13 @@ class Client(BaseModel):
     node: Node = Field(default=Node(), description="The current node")
     public_ip: Optional[str] = Field(default=None, description="Public IP address")
     public_port: Optional[int] = Field(default=None, description="Public port")
-    logger: Optional[logging.Logger] = Field(default=None, description="Logger instance")
+    logger: Optional[Union[Callable, logging.Logger]] = Field(default=None, description="Logger instance")
     connection_alive: bool = Field(default=False, description="Flag indicating if the connection is alive")
     reader: Optional[StreamReader] = Field(default=None, description="StreamReader for the connection")
     writer: Optional[StreamWriter] = Field(default=None, description="StreamWriter for the connection")
     server_url: str = Field(default=SERVER_URL, description="URL of the network server")
+    server_status: bool = Field(default=False, description="The status of the network server, True is On False is Off")
+    server_task: Optional[asyncio.Task] = Field(default=None, description="Server task")
 
     class Config:
         arbitrary_types_allowed = True
@@ -35,7 +37,10 @@ class Client(BaseModel):
         :param str level: The logging level ("info", "warning", "error").
         """
         if self.logger:
-            log_method = getattr(self.logger, level, self.logger.info)
+            if isinstance(self.logger, logging.Logger):
+                log_method = getattr(self.logger, level, self.logger.info)
+            else:
+                log_method = partial(self.logger, level=level)
             log_method(message)
         else:
             print(message)
@@ -145,10 +150,18 @@ class Client(BaseModel):
         """
         Start the server to accept incoming connections.
         """
-        server = await asyncio.start_server(self._handle_client, "0.0.0.0", self.node.public_port)
-        self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
-        async with server:
-            await server.serve_forever()
+        if self.server_status:
+            self._log("Server is already running")
+            return
+        try:
+            server = await asyncio.start_server(self._handle_client, "0.0.0.0", self.node.public_port)
+            self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
+            self.server_status = True
+            self.server_task = asyncio.create_task(server.serve_forever())
+            async with server:
+                await self.server_task
+        except OSError as e:
+            self._log(f"Failed to start server: {e}", level="error")
 
     async def _handle_client(self, reader: StreamReader, writer: StreamWriter) -> None:
         """
@@ -167,6 +180,10 @@ class Client(BaseModel):
         :return dict: The status of the request
         """
         status = {"status": "success", "message": None}
+        if self.server_status:
+            self._log("Already part of the network")
+            return status
+
         await self._discover_public_ip_and_port()
         node_data = self.node.model_dump()
         async with httpx.AsyncClient() as client:
@@ -188,11 +205,15 @@ class Client(BaseModel):
 
     async def leave_network(self) -> dict:
         """
-        Leave the network by contacting the central server.
+        Leave the network by contacting the central server and shutting down the server.
 
         :return dict: The status of the request
         """
         status = {"status": "success", "message": None}
+        if not self.server_status:
+            self._log("Not currently part of the network")
+            return status
+
         params = self.node.model_dump()
         async with httpx.AsyncClient() as client:
             try:
@@ -201,6 +222,12 @@ class Client(BaseModel):
                 response.raise_for_status()
                 self._log("Left the network.")
                 self.connection_alive = False
+                if self.server_task:
+                    self.server_task.cancel()
+                    try:
+                        await self.server_task
+                    except asyncio.CancelledError:
+                        self._log("Server task cancelled.")
             except httpx.HTTPStatusError as e:
                 err = f"Failed to leave network: {e.response.text}"
                 status["status"], status["message"] = "fail", err
@@ -209,6 +236,9 @@ class Client(BaseModel):
                 err = f"An error occurred while requesting: {e}"
                 status["status"], status["message"] = "fail", err
                 self._log(err, level="error")
+            finally:
+                self.server_status = False
+                self._log("Network leave process completed.")
         return status
 
     async def get_nodes(self) -> List[Node]:
@@ -222,7 +252,7 @@ class Client(BaseModel):
                 self._log("Getting nodes on network...")
                 response = await client.get(f"{SERVER_URL}/nodes")
                 response.raise_for_status()
-                nodes = [Node(**x) for x in response.json()]
+                nodes = list(filter(lambda n: self.node != n, [Node(**x) for x in response.json()]))
                 self._log("Got nodes successfully")
             except httpx.HTTPStatusError as e:
                 self._log(f"Failed to get nodes: {e.response.text}", level="error")
@@ -235,11 +265,3 @@ class Client(BaseModel):
         String representation of the Node.
         """
         return f"Node(public_ip={self.node.public_ip}, public_port={self.node.public_port})"
-
-
-async def main():
-    c = Client()
-    print(await c.join_network())
-
-
-asyncio.run(main())
