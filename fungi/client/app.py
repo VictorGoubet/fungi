@@ -36,7 +36,7 @@ class P2PNetworkLauncher:
     async def _connect_to_node(self, target_node: Node) -> None:
         self.connection_status = "connecting"
         try:
-            success = await self.client.initiate_connection(target_node)
+            success = await self.client.connect_to(target_node)
             self.connection_status = {True: "on", False: "off"}[success["status"] == "success"]
         except Exception as e:
             self.connection_status = "error"

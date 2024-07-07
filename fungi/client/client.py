@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from asyncio import StreamReader, StreamWriter
 from functools import partial
 from typing import Callable, List, Optional, Union
 
@@ -20,8 +19,7 @@ class Client(BaseModel):
     public_port: Optional[int] = Field(default=None, description="Public port")
     logger: Optional[Union[Callable, logging.Logger]] = Field(default=None, description="Logger instance")
     connection_alive: bool = Field(default=False, description="Flag indicating if the connection is alive")
-    reader: Optional[StreamReader] = Field(default=None, description="StreamReader for the connection")
-    writer: Optional[StreamWriter] = Field(default=None, description="StreamWriter for the connection")
+    transport: Optional[asyncio.DatagramTransport] = Field(default=None, description="UDP transport")
     server_url: str = Field(default=SERVER_URL, description="URL of the network server")
     server_status: bool = Field(default=False, description="The status of the network server, True is On False is Off")
     server_task: Optional[asyncio.Task] = Field(default=None, description="Server task")
@@ -69,7 +67,7 @@ class Client(BaseModel):
             self.node.public_ip = None
             self.node.public_port = None
 
-    async def initiate_connection(self, other_node: "Node", timeout: int = 30) -> dict:
+    async def connect_to(self, other_node: "Node", timeout: int = 30) -> dict:
         """
         Initiate a connection to another node, retrying until a timeout.
 
@@ -94,61 +92,26 @@ class Client(BaseModel):
 
         while asyncio.get_event_loop().time() < end_time:
             try:
-                self._log(f"Sending connection request to {other_node.public_ip}:{other_node.public_port}..")
-                reader, writer = await asyncio.open_connection(other_node.public_ip, other_node.public_port)
-                await self._handle_connection(reader, writer)
+                self._log(f"Sending UDP packet to {other_node.public_ip}:{other_node.public_port}..")
+                message = "Hello from Client"
+                self.transport.sendto(message.encode(), (other_node.public_ip, other_node.public_port))
+                await asyncio.sleep(1)  # Wait for a response or timeout
                 return status
-            except Exception:
+            except Exception as e:
+                self._log(f"Connection attempt failed: {e}", level="error")
                 await asyncio.sleep(1)
 
         status["status"], status["message"] = "fail", f"Timed out after {timeout} seconds."
         self._log(status["message"], level="error")
         return status
 
-    async def _handle_connection(self, reader: StreamReader, writer: StreamWriter) -> None:
-        """
-        Handle an established connection.
+    def connection_made(self, transport):
+        self.transport = transport
+        self._log(f"UDP connection established")
 
-        :param StreamReader reader: StreamReader for the connection.
-        :param StreamWriter writer: StreamWriter for the connection.
-        """
-        self.reader, self.writer = reader, writer
-        self._log(f"Connection established with {writer.get_extra_info('peername')}")
-        self.connection_alive = True
-        asyncio.create_task(self._maintain_connection())
-        asyncio.create_task(self._handle_incoming_messages())
-
-    async def _maintain_connection(self) -> None:
-        """
-        Periodically send messages to maintain the connection.
-        """
-        if self.writer:
-            while self.connection_alive:
-                try:
-                    self.writer.write(b"KEEP-ALIVE")
-                    await self.writer.drain()
-                except Exception as e:
-                    self._log(f"Failed to send keep-alive message: {e}", level="error")
-                    self.connection_alive = False
-                await asyncio.sleep(10)
-
-    async def _handle_incoming_messages(self) -> None:
-        """
-        Handle incoming messages from the connection.
-        """
-        if self.reader:
-            while self.connection_alive:
-                try:
-                    data = await self.reader.read(100)
-                    if not data:
-                        self._log("Connection closed by peer")
-                        self.connection_alive = False
-                        break
-                    message = data.decode()
-                    self._log(f"Received message: {message}")
-                except Exception as e:
-                    self._log(f"Failed to read message: {e}", level="error")
-                    self.connection_alive = False
+    def datagram_received(self, data, addr):
+        message = data.decode()
+        self._log(f"Received message: {message} from {addr}")
 
     async def _start_server(self) -> None:
         """
@@ -158,24 +121,20 @@ class Client(BaseModel):
             self._log("Server is already running")
             return
         try:
-            server = await asyncio.start_server(self._handle_client, "0.0.0.0", self.node.public_port)
+            loop = asyncio.get_running_loop()
+            transport, _ = await loop.create_datagram_endpoint(
+                lambda: self, local_addr=(self.node.public_ip, self.node.public_port)
+            )
+            self.transport = transport
             self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
             self.server_status = True
-            self.server_task = asyncio.create_task(server.serve_forever())
-            async with server:
-                await self.server_task
+            self.server_task = asyncio.create_task(self._serve_forever())
         except OSError as e:
             self._log(f"Failed to start server: {e}", level="error")
 
-    async def _handle_client(self, reader: StreamReader, writer: StreamWriter) -> None:
-        """
-        Handle an incoming client connection.
-
-        :param StreamReader reader: StreamReader for the connection.
-        :param StreamWriter writer: StreamWriter for the connection.
-        """
-        self._log("Accepted a new client connection")
-        await self._handle_connection(reader, writer)
+    async def _serve_forever(self):
+        while self.server_status:
+            await asyncio.sleep(3600)
 
     async def join_network(self) -> dict:
         """
