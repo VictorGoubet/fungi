@@ -154,7 +154,7 @@ class Client(BaseModel):
                 lambda: UDPServer(self.handle_incoming_message),
                 local_addr=(self.node.local_ip, self.node.local_port),
             )
-            self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
+            self._log(f"Serving on {self.node.local_ip}:{self.node.local_port}")
             self.server_status = True
         except OSError as e:
             self._log(f"Failed to start server: {e}", level="error")

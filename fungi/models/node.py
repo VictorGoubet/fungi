@@ -21,9 +21,16 @@ class Node(BaseModel):
         default="0.0.0.0",
         description="Local IP address",
         examples=["192.168.1.1", "0.0.0.0"],
+        exclude=True,
     )
     local_port: int = Field(
         default=5001,
         description="Local port",
         examples=[5001, 8000],
+        exclude=True,
     )
+
+    def __eq__(self, other):
+        if isinstance(other, Node):
+            return self.public_ip == other.public_ip and self.public_port == other.public_port
+        return False
