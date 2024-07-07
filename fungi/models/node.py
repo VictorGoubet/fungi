@@ -26,7 +26,7 @@ class Node(BaseModel):
     local_port: int = Field(
         default=5001,
         description="Local port",
-        examples=[5001, 8000],
+        examples=[9000, 8000],
         exclude=True,
     )
 

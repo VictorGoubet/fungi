@@ -85,7 +85,10 @@ class P2PNetworkLauncher:
             node_choices = [f"{node.public_ip}:{node.public_port}" for node in current_nodes]
             return (
                 self.log,
-                gr.update(choices=node_choices),  # list
+                gr.update(
+                    choices=node_choices,
+                    value=node_choices[0] if len(node_choices) > 0 else None,
+                ),  # list
                 gr.update(interactive=len(current_nodes) > 0),  # connect
             )
 
