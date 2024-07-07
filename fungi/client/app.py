@@ -14,11 +14,15 @@ class P2PNetworkLauncher:
         self.client = Client(logger=self._log, server_url=SERVER_URL)
         self.connection_status = "off"
         self.log = ""
+        self.chat_log = ""
 
     def _log(self, message: str, level: str = "info") -> None:
         log_method = getattr(self.logger, level, self.logger.info)
         log_method(message)
         self.log += f"{level.upper()}: {message}\n"
+
+    def _chat_log(self, message: str) -> None:
+        self.chat_log += f"{message}\n"
 
     async def _join_network(self) -> None:
         await self.client.join_network()
@@ -41,6 +45,11 @@ class P2PNetworkLauncher:
         except Exception as e:
             self.connection_status = "error"
             self._log(f"Connection failed: {e}", level="error")
+
+    async def _send_chat_message(self, target_node: Node, message: str) -> None:
+        if target_node.public_ip and target_node.public_port:
+            await self.client.send_message(message, target_node.public_ip, target_node.public_port)
+            self._chat_log(f"You: {message}")
 
     def run(self):
         async def join_network():
@@ -86,6 +95,12 @@ class P2PNetworkLauncher:
             await self._connect_to_node(target_node)
             return self.log
 
+        async def send_chat_message(node: str, message: str):
+            ip, port = node.split(":")
+            target_node = Node(public_ip=ip, public_port=int(port))
+            await self._send_chat_message(target_node, message)
+            return self.chat_log
+
         with gr.Blocks() as demo:
             gr.Markdown("# P2P Network Launcher")
             with gr.Row():
@@ -97,6 +112,11 @@ class P2PNetworkLauncher:
             connect_btn = gr.Button("Connect to Node", interactive=False)
             log_output = gr.Textbox(label="Logs", placeholder="Logs will appear here...", lines=10)
 
+            with gr.Row():
+                chat_message = gr.Textbox(label="Chat Message", placeholder="Type your message here...")
+                send_btn = gr.Button("Send Message", interactive=False)
+            chat_log_output = gr.Textbox(label="Chat Log", placeholder="Chat messages will appear here...", lines=10)
+
             join_btn.click(
                 fn=join_network,
                 outputs=[log_output, node_selector, join_btn, leave_btn, refresh_btn, connect_btn],
@@ -107,6 +127,7 @@ class P2PNetworkLauncher:
             )
             refresh_btn.click(fn=refresh_nodes, outputs=[log_output, node_selector, connect_btn])
             connect_btn.click(fn=connect_to_node, inputs=[node_selector], outputs=[log_output])
+            send_btn.click(fn=send_chat_message, inputs=[node_selector, chat_message], outputs=[chat_log_output])
 
         demo.launch()
 

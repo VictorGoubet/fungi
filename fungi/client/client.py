@@ -7,6 +7,7 @@ import httpx
 import stun
 from pydantic import BaseModel, Field
 
+from fungi.client.udp import UDPServer
 from fungi.models.node import Node
 from fungi.tools.constants import SERVER_URL
 
@@ -22,7 +23,7 @@ class Client(BaseModel):
     transport: Optional[asyncio.DatagramTransport] = Field(default=None, description="UDP transport")
     server_url: str = Field(default=SERVER_URL, description="URL of the network server")
     server_status: bool = Field(default=False, description="The status of the network server, True is On False is Off")
-    server_task: Optional[asyncio.Task] = Field(default=None, description="Server task")
+    response_received: asyncio.Event = Field(default_factory=asyncio.Event, description="Response Event")
 
     class Config:
         arbitrary_types_allowed = True
@@ -50,7 +51,12 @@ class Client(BaseModel):
         """
         loop = asyncio.get_event_loop()
         stun_server = ("stun.l.google.com", 19302)
-        get_ip_info_partial = partial(stun.get_ip_info, stun_host=stun_server[0], stun_port=stun_server[1])
+        get_ip_info_partial = partial(
+            stun.get_ip_info,
+            stun_host=stun_server[0],
+            stun_port=stun_server[1],
+            source_port=self.node.local_port,
+        )
         return await loop.run_in_executor(None, get_ip_info_partial)
 
     async def _discover_public_ip_and_port(self) -> None:
@@ -88,15 +94,20 @@ class Client(BaseModel):
             self._log(err, level="warning")
             return status
 
+        if not self.transport:
+            err = "The current node is not listening for response yet."
+            status["status"], status["message"] = "fail", err
+            self._log(err, level="warning")
+            return status
+
         end_time = asyncio.get_event_loop().time() + timeout
 
         while asyncio.get_event_loop().time() < end_time:
             try:
-                self._log(f"Sending UDP packet to {other_node.public_ip}:{other_node.public_port}..")
-                message = "Hello from Client"
-                self.transport.sendto(message.encode(), (other_node.public_ip, other_node.public_port))
-                await asyncio.sleep(1)  # Wait for a response or timeout
-                return status
+                await self.send_message(f"Hello from {self.node}", other_node.public_ip, other_node.public_port)
+                await asyncio.sleep(1)
+                if self.response_received.is_set():
+                    return status
             except Exception as e:
                 self._log(f"Connection attempt failed: {e}", level="error")
                 await asyncio.sleep(1)
@@ -105,13 +116,30 @@ class Client(BaseModel):
         self._log(status["message"], level="error")
         return status
 
-    def connection_made(self, transport):
-        self.transport = transport
-        self._log(f"UDP connection established")
+    async def send_message(self, message: str, target_ip: str, target_port: int) -> None:
+        """
+        Send a message to a specified target IP and port.
 
-    def datagram_received(self, data, addr):
-        message = data.decode()
-        self._log(f"Received message: {message} from {addr}")
+        :param str message: The message to send.
+        :param str target_ip: The target IP address.
+        :param int target_port: The target port number.
+        """
+        if not self.transport:
+            self._log("Transport is not available. Please start the server first.", level="error")
+            return
+
+        self.transport.sendto(message.encode(), (target_ip, target_port))
+        self._log(f"Sent message to {target_ip}:{target_port}")
+
+    def handle_incoming_message(self, message: str, sender):
+        """
+        Handle an incoming message and set the response received flag.
+
+        :param str message: The incoming message.
+        :param sender: The sender's address.
+        """
+        self._log(f"Received message from {sender}: {message}")
+        self.response_received.set()
 
     async def _start_server(self) -> None:
         """
@@ -122,19 +150,27 @@ class Client(BaseModel):
             return
         try:
             loop = asyncio.get_running_loop()
-            transport, _ = await loop.create_datagram_endpoint(
-                lambda: self, local_addr=(self.node.public_ip, self.node.public_port)
+            self.transport, _ = await loop.create_datagram_endpoint(
+                lambda: UDPServer(self.handle_incoming_message),
+                local_addr=(self.node.local_ip, self.node.local_port),
             )
-            self.transport = transport
             self._log(f"Serving on {self.node.public_ip}:{self.node.public_port}")
             self.server_status = True
-            self.server_task = asyncio.create_task(self._serve_forever())
         except OSError as e:
             self._log(f"Failed to start server: {e}", level="error")
 
-    async def _serve_forever(self):
-        while self.server_status:
-            await asyncio.sleep(3600)
+    async def _stop_server(self) -> None:
+        """
+        Stop the server from accepting incoming connections.
+        """
+        if not self.server_status:
+            self._log("Server is not running")
+            return
+        if self.transport:
+            self.transport.close()
+            self.transport = None
+            self.server_status = False
+            self._log("Server has been stopped")
 
     async def join_network(self) -> dict:
         """
@@ -183,14 +219,9 @@ class Client(BaseModel):
                 self._log("Leaving the network..")
                 response = await client.delete(f"{self.server_url}/nodes", params=params)
                 response.raise_for_status()
-                self._log("Left the network.")
+                await self._stop_server()
                 self.connection_alive = False
-                if self.server_task:
-                    self.server_task.cancel()
-                    try:
-                        await self.server_task
-                    except asyncio.CancelledError:
-                        self._log("Server task cancelled.")
+                self._log("Left the network.")
             except httpx.HTTPStatusError as e:
                 err = f"Failed to leave network: {e.response.text}"
                 status["status"], status["message"] = "fail", err
