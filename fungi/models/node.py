@@ -45,12 +45,11 @@ class Node(BaseModel):
         """
         if not isinstance(other, Node):
             return False
-        return (
-            self.public_ip == other.public_ip
-            and self.public_port == other.public_port
-            and self.local_ip == other.local_ip
-            and self.local_port == other.local_port
-        )
+        same_public_ip = str(self.public_ip) == str(other.public_ip)
+        same_public_port = self.public_port == other.public_port
+        same_local_ip = str(self.local_ip) == str(other.local_ip)
+        same_local_port = self.local_port == other.local_port
+        return same_public_ip and same_public_port and same_local_ip and same_local_port
 
     def __hash__(self) -> int:
         """

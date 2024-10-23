@@ -46,7 +46,7 @@ Launch the client inorder to connect to other nodes
 launch-fungi
 ```
 
-Note: be sure to have the good signaling server host and port in the tools/constants file, the default is
+Note: be sure to have the good signaling server host and port in the utils/constants file, the default is
 
 ```python
 SERVER_URL = "http://localhost:8000"
