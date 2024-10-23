@@ -12,6 +12,7 @@ pydantic = "^2.7.4"
 
 pystun3 = "^2.0.0"
 gradio = "^4.37.2"
+redis = "^5.1.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

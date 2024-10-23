@@ -4,9 +4,22 @@
 scriptDir="$(dirname "$(realpath "$0")")"
 parentDir="$(realpath "$scriptDir/../..")"
 
+# Load environment variables from .env file
+if [ -f "$parentDir/.env" ]; then
+    export $(grep -v '^#' "$parentDir/.env" | xargs)
+else
+    echo "Error: .env file not found"
+    exit 1
+fi
+
 # Prompt the user for the image version tag
 read -p "Please enter the image version tag: " IMAGE_VERSION
-DOCKER_USERNAME="victorgoubet"
+
+# Check if DOCKER_USERNAME is set
+if [ -z "$DOCKER_USERNAME" ]; then
+    echo "Error: DOCKER_USERNAME is not set in the .env file"
+    exit 1
+fi
 
 # Tag the image with the version
 docker tag fungi:latest $DOCKER_USERNAME/fungi:$IMAGE_VERSION

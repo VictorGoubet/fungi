@@ -2,18 +2,31 @@
 
 # Get the script's directory and move to the parent directory of 'scripts'
 scriptDir="$(dirname "$(realpath "$0")")"
-parentDir="$(realpath "$scriptDir/..")"
+parentDir="$(realpath "$scriptDir/../..")"
+
+# Load environment variables from .env file
+if [ -f "$parentDir/.env" ]; then
+    export $(grep -v '^#' "$parentDir/.env" | xargs)
+else
+    echo "Error: .env file not found"
+    exit 1
+fi
 
 # Prompt the user for the image version tag
 read -p "Please enter the image version tag: " IMAGE_VERSION
-DOCKER_USERNAME="victorgoubet"
+
+# Check if DOCKER_USERNAME and DOCKER_PASSWORD are set
+if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+    echo "Error: DOCKER_USERNAME or DOCKER_PASSWORD is not set in the .env file"
+    exit 1
+fi
 
 # Tag the image with the version
 docker tag fungi:latest $DOCKER_USERNAME/fungi:$IMAGE_VERSION
 
 # Log in to Docker Hub
 echo "Logging into Docker Hub..."
-docker login --username $DOCKER_USERNAME
+echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USERNAME --password-stdin
 
 # Push the image to Docker Hub
 docker push $DOCKER_USERNAME/fungi:$IMAGE_VERSION

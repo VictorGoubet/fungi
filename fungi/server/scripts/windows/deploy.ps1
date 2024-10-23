@@ -1,19 +1,38 @@
 # Get the script's directory and move to the parent directory of 'scripts'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$parentDir = Split-Path -Parent $scriptDir
+$parentDir = Split-Path -Parent (Split-Path -Parent $scriptDir)
+
+# Load environment variables from .env file
+if (Test-Path "$parentDir\.env") {
+    Get-Content "$parentDir\.env" | ForEach-Object {
+        if ($_ -match '^(.+)=(.+)$') {
+            $key = $matches[1]
+            $value = $matches[2]
+            Set-Item -Path "Env:$key" -Value $value
+        }
+    }
+} else {
+    Write-Host "Error: .env file not found"
+    exit 1
+}
 
 # Prompt the user for the image version tag
 $IMAGE_VERSION = Read-Host "Please enter the image version tag"
-$DOCKER_USERNAME = "victorgoubet"
+
+# Check if DOCKER_USERNAME is set
+if (-not $env:DOCKER_USERNAME) {
+    Write-Host "Error: DOCKER_USERNAME is not set in the .env file"
+    exit 1
+}
 
 # Tag the image with the version
-docker tag fungi:latest $DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker tag fungi:latest $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION
 
 # Log in to Docker Hub
 Write-Host "Logging into Docker Hub..."
-docker login --username $DOCKER_USERNAME
+docker login --username $env:DOCKER_USERNAME
 
 # Push the image to Docker Hub
-docker push $DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker push $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION
 
-Write-Host "Deployment complete: $DOCKER_USERNAME/fungi:$IMAGE_VERSION"
+Write-Host "Deployment complete: $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION"

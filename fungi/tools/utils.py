@@ -5,8 +5,11 @@ def get_logger(name: str = "P2PLogger", level: int = logging.INFO) -> logging.Lo
     """
     Get a configured logger.
 
-    :param name: Name of the logger.
-    :param level: Logging level.
+    This function creates and configures a logger with the specified name and logging level.
+    If a logger with the given name already exists, it returns that logger instead of creating a new one.
+
+    :param name: Name of the logger. Defaults to "P2PLogger".
+    :param level: Logging level. Defaults to logging.INFO.
     :return: Configured logger instance.
     """
     logger = logging.getLogger(name)

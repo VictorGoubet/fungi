@@ -1,36 +1,61 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, IPvAnyAddress
 
 
 class Node(BaseModel):
-    """Representation of a single Node in the P2P network"""
+    """
+    Represents a node in the P2P network.
+    """
 
-    public_ip: Optional[str] = Field(
-        default=None,
-        description="Public IP address",
-        examples=["125.77.1.1", "25.111.10.27"],
-    )
-    public_port: Optional[int] = Field(
-        default=None,
-        description="Public port",
-        examples=[8080, 9090],
-    )
+    local_ip: IPvAnyAddress = Field(default="127.0.0.1", description="Local IP address of the node")
+    local_port: int = Field(default=0, description="Local port of the node")
+    public_ip: Optional[IPvAnyAddress] = Field(default=None, description="Public IP address of the node")
+    public_port: Optional[int] = Field(default=None, description="Public port of the node")
 
-    local_ip: str = Field(
-        default="0.0.0.0",
-        description="Local IP address",
-        examples=["192.168.1.1", "0.0.0.0"],
-        exclude=True,
-    )
-    local_port: int = Field(
-        default=5001,
-        description="Local port",
-        examples=[9000, 8000],
-        exclude=True,
-    )
+    class Config:
+        """
+        Pydantic configuration for the Node model.
+        """
 
-    def __eq__(self, other):
-        if isinstance(other, Node):
-            return self.public_ip == other.public_ip and self.public_port == other.public_port
-        return False
+        arbitrary_types_allowed = True
+        json_schema_extra = {
+            "example": {
+                "local_ip": "192.168.1.100",
+                "local_port": 8000,
+                "public_ip": "203.0.113.1",
+                "public_port": 9000,
+            }
+        }
+
+    def __str__(self) -> str:
+        """
+        String representation of the Node.
+
+        :return: A string representation of the Node.
+        """
+        return f"Node(public_ip={self.public_ip}, public_port={self.public_port})"
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Check if two Node objects are equal.
+
+        :param other: The other object to compare with.
+        :return: True if the objects are equal, False otherwise.
+        """
+        if not isinstance(other, Node):
+            return False
+        return (
+            self.public_ip == other.public_ip
+            and self.public_port == other.public_port
+            and self.local_ip == other.local_ip
+            and self.local_port == other.local_port
+        )
+
+    def __hash__(self) -> int:
+        """
+        Generate a hash value for the Node.
+
+        :return: The hash value of the Node.
+        """
+        return hash((self.public_ip, self.public_port, self.local_ip, self.local_port))

@@ -3,7 +3,7 @@ from typing import List
 
 from fastapi import FastAPI, HTTPException, Query
 from node import Node
-from pydantic import ValidationError
+from pydantic import IPvAnyAddress, ValidationError
 from service import NetworkService
 
 app = FastAPI(
@@ -43,6 +43,7 @@ async def get_nodes() -> List[Node]:
 
 @app.post(
     "/nodes",
+    tags=["nodes"],
     response_model=Node,
     status_code=201,
     responses={
@@ -67,6 +68,7 @@ async def add_node(node: Node) -> Node:
 
 @app.delete(
     "/nodes",
+    tags=["nodes"],
     status_code=204,
     responses={
         204: {
@@ -78,7 +80,7 @@ async def add_node(node: Node) -> Node:
         },
     },
 )
-async def remove_node(public_ip: str = Query(...), public_port: int = Query(...)) -> None:
+async def remove_node(public_ip: IPvAnyAddress = Query(...), public_port: int = Query(...)) -> None:
     """Remove a node from the network"""
     node = Node(public_ip=public_ip, public_port=public_port)
     try:
