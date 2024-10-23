@@ -79,3 +79,11 @@ class NetworkService(BaseModel):
         :return List[Node]: A list of nodes currently in the network.
         """
         return await self._load_nodes_from_storage()
+
+    async def update_node(self, node: Node) -> None:
+        """
+        Update node information in the Redis storage.
+
+        :param Node node: The node with updated information.
+        """
+        await self._add_node_to_storage(node)

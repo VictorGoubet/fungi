@@ -1,5 +1,5 @@
 from ipaddress import ip_address
-from logging import Handler, Logger
+from logging import DEBUG, Handler, Logger, LogRecord
 from typing import Any, Dict, List, Optional
 
 from gradio import Blocks, Button, Dropdown, Markdown, Row, Textbox
@@ -19,9 +19,15 @@ class LogHandler(Handler):
         super().__init__()
         self.callback = callback
 
-    def emit(self, record):
-        log_entry = self.format(record)
-        self.callback(log_entry)
+    def emit(self, record: LogRecord) -> None:
+        """
+        Emit a log record.
+
+        :param LogRecord record: The log record to emit.
+        """
+        if record.levelno > 10:  # Filter out DEBUG logs (level 10)
+            log_entry = self.format(record)
+            self.callback(log_entry)
 
 
 class P2PNetworkLauncher:
@@ -33,8 +39,8 @@ class P2PNetworkLauncher:
         """
         Initialize the P2P Network Launcher.
         """
-        self._logger: Logger = get_logger(name="P2P_Launcher")
-        client_logger = get_logger(name="P2P_Client")
+        self._logger: Logger = get_logger(name="P2P_Launcher", level=DEBUG)
+        client_logger = get_logger(name="P2P_Client", level=DEBUG)
         client_logger.addHandler(LogHandler(self._update_log))
         self._client: Client = Client(server_url=SERVER_URL, logger=client_logger)
         self._connection_status: str = "off"

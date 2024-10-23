@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import Dict, List
 
 from fastapi import FastAPI, HTTPException, Query
 from node import Node
@@ -21,6 +21,7 @@ network_service = NetworkService()
 
 @app.get(
     "/nodes",
+    tags=["nodes"],
     response_model=List[Node],
     responses={
         200: {
@@ -85,5 +86,29 @@ async def remove_node(public_ip: IPvAnyAddress = Query(...), public_port: int = 
     node = Node(public_ip=public_ip, public_port=public_port)
     try:
         await network_service.remove_node(node)
+    except (ValidationError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put(
+    "/nodes",
+    tags=["nodes"],
+    status_code=200,
+    responses={
+        200: {
+            "description": "Node information updated successfully",
+            "content": {"application/json": {"example": {"message": "Node information updated"}}},
+        },
+        400: {
+            "description": "Invalid request data",
+            "content": {"application/json": {"example": {"detail": "Invalid request data"}}},
+        },
+    },
+)
+async def update_node(node: Node) -> Dict[str, str]:
+    """Update node information"""
+    try:
+        await network_service.update_node(node)
+        return {"message": "Node information updated"}
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))

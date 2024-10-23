@@ -1,21 +1,20 @@
 import asyncio
 from socket import socket
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 
 class UDPServer(asyncio.DatagramProtocol):
     """A UDP server for handling P2P communications."""
 
-    def __init__(self, message_handler: Callable[[str, Tuple[str, int]], None], send_socket: socket) -> None:
+    def __init__(self, send_socket: socket) -> None:
         """
         Initialize the UDP server.
 
-        :param Callable[[str, Tuple[str, int]], None] message_handler: Function to handle incoming messages.
         :param socket send_socket: Socket used for sending messages.
         """
-        self._message_handler = message_handler
         self._send_socket = send_socket
         self._transport = None
+        self._message_callback: Optional[Callable[[str], None]] = None
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         """
@@ -33,7 +32,8 @@ class UDPServer(asyncio.DatagramProtocol):
         :param Tuple[str, int] addr: The address of the sender.
         """
         message = data.decode()
-        self._message_handler(message, addr)
+        if self._message_callback:
+            self._message_callback(message)
 
     def send_message(self, message: str, target_ip: str, target_port: int) -> None:
         """
@@ -44,3 +44,11 @@ class UDPServer(asyncio.DatagramProtocol):
         :param int target_port: The target port number.
         """
         self._send_socket.sendto(message.encode(), (target_ip, target_port))
+
+    def set_message_callback(self, callback: Callable[[str], None]) -> None:
+        """
+        Set the callback function for received messages.
+
+        :param Callable[[str], None] callback: The callback function to handle received messages.
+        """
+        self._message_callback = callback
