@@ -31,7 +31,7 @@ docker build `
     --build-arg REDIS_PORT=$env:REDIS_PORT `
     --build-arg UVICORN_HOST=$env:UVICORN_HOST `
     --build-arg UVICORN_PORT=$env:UVICORN_PORT `
-    -t fungi:latest `
+    -t fungi_server:latest `
     $dockerBuildContext
 
-Write-Host "Build complete: fungi:latest"
+Write-Host "Build complete: fungi_server:latest"

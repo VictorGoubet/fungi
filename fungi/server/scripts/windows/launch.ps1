@@ -26,4 +26,4 @@ if (-Not $UVICORN_PORT) {
 }
 
 # Run the Docker container
-docker run -p ${UVICORN_PORT}:${UVICORN_PORT} fungi:latest
+docker run -p ${UVICORN_PORT}:${UVICORN_PORT} fungi_server:latest

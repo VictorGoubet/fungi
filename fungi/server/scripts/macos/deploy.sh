@@ -22,13 +22,13 @@ if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
 fi
 
 # Tag the image with the version
-docker tag fungi:latest $DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker tag fungi_server:latest $DOCKER_USERNAME/fungi_server:$IMAGE_VERSION
 
 # Log in to Docker Hub
 echo "Logging into Docker Hub..."
 echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USERNAME --password-stdin
 
 # Push the image to Docker Hub
-docker push $DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker push $DOCKER_USERNAME/fungi_server:$IMAGE_VERSION
 
-echo "Deployment complete: $DOCKER_USERNAME/fungi:$IMAGE_VERSION"
+echo "Deployment complete: $DOCKER_USERNAME/fungi_server:$IMAGE_VERSION"

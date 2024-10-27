@@ -26,13 +26,13 @@ if (-not $env:DOCKER_USERNAME) {
 }
 
 # Tag the image with the version
-docker tag fungi:latest $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker tag fungi_server:latest $env:DOCKER_USERNAME/fungi_server:$IMAGE_VERSION
 
 # Log in to Docker Hub
 Write-Host "Logging into Docker Hub..."
 docker login --username $env:DOCKER_USERNAME
 
 # Push the image to Docker Hub
-docker push $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION
+docker push $env:DOCKER_USERNAME/fungi_server:$IMAGE_VERSION
 
-Write-Host "Deployment complete: $env:DOCKER_USERNAME/fungi:$IMAGE_VERSION"
+Write-Host "Deployment complete: $env:DOCKER_USERNAME/fungi_server:$IMAGE_VERSION"
