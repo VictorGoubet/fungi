@@ -2,7 +2,6 @@ import asyncio
 from functools import partial
 from ipaddress import ip_address
 from logging import INFO, Logger
-from socket import AF_INET, SOCK_DGRAM, socket
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -33,10 +32,11 @@ class Client:
         self._logger: Logger = logger
         self._server_url: str = server_url
         self._server_status: bool = False
-        self._response_received: asyncio.Event = asyncio.Event()
-        self._send_socket: socket = socket(AF_INET, SOCK_DGRAM)
-        self._transport: Optional[asyncio.DatagramTransport] = None
-        self._udp_server: Optional[UDPServer] = None
+        self._udp_server: UDPServer = UDPServer(self._handle_message)
+
+    ############################
+    #  Core network operations #
+    ############################
 
     async def join_network(self) -> Dict[str, Any]:
         """
@@ -51,27 +51,14 @@ class Client:
         if not await self._discover_public_ip_and_port():
             return {"status": "fail", "message": "Failed to discover public IP and port"}
 
-        node_data = self._node.model_dump(mode="json")
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(f"{self._server_url}/nodes", json=node_data)
-                response.raise_for_status()
+        insert_result = await self._insert_node()
+        if insert_result["status"] != "success":
+            return insert_result
 
-            start_result = await self._start_server()
-            if start_result["status"] != "success":
-                return start_result
-
-            asyncio.create_task(self.keep_alive())
-            self._logger.info(" ✅ Joined network successfully")
-            return {"status": "success", "message": "Joined network successfully"}
-        except httpx.HTTPStatusError as e:
-            err = f"Failed to join network: {e.response.text}"
-            self._logger.error(f" ❌ {err}")
-            return {"status": "fail", "message": err}
-        except httpx.RequestError as e:
-            err = f"An error occurred while requesting: {e}"
-            self._logger.error(f" ❌ {err}")
-            return {"status": "fail", "message": err}
+        await self._start_server()
+        asyncio.create_task(self.keep_alive())
+        self._logger.info(" ✅ Joined network successfully")
+        return {"status": "success", "message": "Joined network successfully"}
 
     async def leave_network(self) -> Dict[str, Any]:
         """
@@ -83,128 +70,107 @@ class Client:
             self._logger.info(" 💡 Not currently part of the network")
             return {"status": "success", "message": "Not currently part of the network"}
 
+        delete_result = await self._delete_node()
+        if delete_result["status"] != "success":
+            return delete_result
+
+        await self._stop_server()
+        self._server_status = False
+        self._logger.info(" ✅ Left the network.")
+        return {"status": "success", "message": "Left the network successfully"}
+
+    async def keep_alive(self) -> None:
+        """
+        Periodically rediscover public IP and port to keep the NAT mapping alive.
+        """
+        while self._server_status:
+            new_ip, new_port = await self._discover_public_ip_and_port()
+            if new_ip is not None and new_port is not None:
+                ip_changed = new_ip != self._node.public_ip
+                port_changed = new_port != self._node.public_port
+
+                if ip_changed or port_changed:
+                    self._node.public_ip = ip_address(new_ip)
+                    self._node.public_port = new_port
+                    update_result = await self._update_node()
+                    if update_result["status"] != "success":
+                        self._logger.error(f" ❌ Failed to update node info: {update_result['message']}")
+
+                    if port_changed:
+                        self._logger.info(
+                            f" 💡 Public port changed from {self._node.local_port} to {new_port}. Restarting server."
+                        )
+                        await self._stop_server()
+                        self._node.local_port = new_port
+                        await self._start_server()
+
+            await asyncio.sleep(30)  # Send keep-alive every 30 seconds
+
+    #####################
+    #  Node management  #
+    #####################
+
+    async def _insert_node(self) -> Dict[str, Any]:
+        """
+        Insert the node information into the central server.
+
+        :return Dict[str, Any]: A dictionary containing the insert status and message.
+        """
+        node_data = self._node.model_dump(mode="json")
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(f"{self._server_url}/nodes", json=node_data)
+                response.raise_for_status()
+            return {"status": "success", "message": "Node inserted successfully"}
+        except httpx.HTTPStatusError as e:
+            err = f"Failed to insert node: {e.response.text}"
+            self._logger.error(f" ❌ {err}")
+            return {"status": "fail", "message": err}
+        except httpx.RequestError as e:
+            err = f"An error occurred while inserting node: {e}"
+            self._logger.error(f" ❌ {err}")
+            return {"status": "fail", "message": err}
+
+    async def _delete_node(self) -> Dict[str, Any]:
+        """
+        Delete the node information from the central server.
+
+        :return Dict[str, Any]: A dictionary containing the delete status and message.
+        """
         params = self._node.model_dump(mode="json")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.delete(f"{self._server_url}/nodes", params=params)
                 response.raise_for_status()
-
-            stop_result = await self._stop_server()
-            if stop_result["status"] != "success":
-                return stop_result
-
-            self._logger.info(" ✅ Left the network.")
-            return {"status": "success", "message": "Left the network successfully"}
+            return {"status": "success", "message": "Node deleted successfully"}
         except httpx.HTTPStatusError as e:
-            err = f"Failed to leave network: {e.response.text}"
+            err = f"Failed to delete node: {e.response.text}"
             self._logger.error(f" ❌ {err}")
             return {"status": "fail", "message": err}
         except httpx.RequestError as e:
-            err = f"An error occurred while requesting: {e}"
+            err = f"An error occurred while deleting node: {e}"
             self._logger.error(f" ❌ {err}")
             return {"status": "fail", "message": err}
-        finally:
-            self._server_status = False
-            self._logger.info(" 💡 Network leave process completed.")
 
-    async def connect_to(self, other_node: Node, timeout: int = 30) -> Dict[str, Any]:
+    async def _update_node(self) -> Dict[str, Any]:
         """
-        Initiate a connection to another node using hole punching.
+        Update the node information on the signaling server.
 
-        :param Node other_node: The node to connect to.
-        :param int timeout: The timeout in seconds.
-        :return Dict[str, Any]: A dictionary containing the connection status and message.
-        """
-        if not self._validate_connection_prerequisites(other_node):
-            return {"status": "fail", "message": "Connection prerequisites not met"}
-
-        # Start listening for incoming messages
-        receive_task = asyncio.create_task(self._listen_for_connection(timeout))
-
-        # Send punch messages
-        punch_task = asyncio.create_task(self._send_punch_messages(other_node))
-
-        # Wait for either task to complete
-        done, pending = await asyncio.wait([receive_task, punch_task], return_when=asyncio.FIRST_COMPLETED)
-
-        # Cancel the pending task
-        for task in pending:
-            task.cancel()
-
-        # Check the result
-        if receive_task in done:
-            result = receive_task.result()
-            if result["status"] == "success":
-                return {"status": "success", "message": "Connection established"}
-
-        return {"status": "fail", "message": "Connection failed"}
-
-    async def _listen_for_connection(self, timeout: int) -> Dict[str, Any]:
-        """
-        Listen for incoming connection messages.
-
-        :param int timeout: The timeout in seconds.
-        :return Dict[str, Any]: A dictionary containing the connection status and message.
+        :return Dict[str, Any]: A dictionary containing the update status and message.
         """
         try:
-            while True:
-                message = await asyncio.wait_for(self._receive_message(), timeout=timeout)
-                if message.startswith("punch"):
-                    # Respond to punch message
-                    sender_ip, sender_port = message.split(":")[1:]
-                    await self.send_message("pong", ip_address(sender_ip), int(sender_port))
-                elif message.startswith("pong"):
-                    # Connection established
-                    return {"status": "success", "message": "Connection established"}
-        except asyncio.TimeoutError:
-            return {"status": "fail", "message": "Connection attempt timed out"}
-
-    async def _receive_message(self) -> str:
-        """
-        Receive a message from the UDP server.
-
-        :return str: The received message.
-        """
-        future = asyncio.Future()
-        if self._udp_server:
-            self._udp_server.set_message_callback(future.set_result)
-        else:
-            raise RuntimeError("UDP server not initialized")
-        return await future
-
-    async def _send_punch_messages(self, other_node: Node) -> Dict[str, Any]:
-        """
-        Send punch messages to initiate hole punching.
-
-        :param Node other_node: The node to send punch messages to.
-        :return Dict[str, Any]: A dictionary containing the punch status and message.
-        """
-        for _ in range(30):  # Try punching for 30 seconds
-            if other_node.public_ip is not None and other_node.public_port is not None:
-                message = f"punch:{self._node.public_ip}:{self._node.public_port}"
-                await self.send_message(message, other_node.public_ip, other_node.public_port)
-                await asyncio.sleep(1)  # Wait a second between punches
-            else:
-                return {"status": "fail", "message": "Other node's public IP or port is None"}
-        return {"status": "fail", "message": "Punch messages sent, but no response received"}
-
-    async def send_message(self, message: str, target_ip: IPvAnyAddress, target_port: int) -> Dict[str, Any]:
-        """
-        Send a message to a specified target IP and port.
-
-        :param str message: The message to send.
-        :param IPvAnyAddress target_ip: The target IP address.
-        :param int target_port: The target port number.
-        :return Dict[str, Any]: A dictionary containing the send status and message.
-        """
-        try:
-            self._send_socket.sendto(message.encode(), (str(target_ip), target_port))
-            self._logger.info(f" ✅ Sent message to {target_ip}:{target_port}")
-            return {"status": "success", "message": f"Message sent to {target_ip}:{target_port}"}
-        except Exception as e:
-            error_message = f"Failed to send message: {e}"
-            self._logger.error(f" ❌ {error_message}")
-            return {"status": "error", "message": error_message}
+            async with httpx.AsyncClient() as client:
+                response = await client.put(f"{self._server_url}/nodes", json=self._node.model_dump(mode="json"))
+                response.raise_for_status()
+            return {"status": "success", "message": "Node updated successfully"}
+        except httpx.HTTPStatusError as e:
+            err = f"Failed to update node: {e.response.text}"
+            self._logger.error(f" ❌ {err}")
+            return {"status": "fail", "message": err}
+        except httpx.RequestError as e:
+            err = f"An error occurred while updating node: {e}"
+            self._logger.error(f" ❌ {err}")
+            return {"status": "fail", "message": err}
 
     async def get_nodes(self) -> List[Node]:
         """
@@ -225,41 +191,89 @@ class Client:
             self._logger.error(f" ❌ An error occurred while requesting: {e}")
         return []
 
-    async def keep_alive(self) -> None:
-        """
-        Periodically rediscover public IP and port to keep the NAT mapping alive.
-        """
-        while self._server_status:
-            new_ip, new_port = await self._discover_public_ip_and_port()
-            if (
-                new_ip is not None
-                and new_port is not None
-                and (new_ip != self._node.public_ip or new_port != self._node.public_port)
-            ):
-                self._node.public_ip = ip_address(new_ip)
-                self._node.public_port = new_port
-                await self._update_node_info()
-            await asyncio.sleep(5)  # Send keep-alive every 30 seconds
+    ############################
+    # Connection and messaging #
+    ############################
 
-    async def _update_node_info(self) -> None:
+    async def connect_to(self, other_node: Node, timeout: int = 30) -> Dict[str, Any]:
         """
-        Update the node information on the signaling server.
+        Initiate a connection to another node using hole punching.
+
+        :param Node other_node: The node to connect to.
+        :param int timeout: The timeout in seconds.
+        :return Dict[str, Any]: A dictionary containing the connection status and message.
+        """
+        if not self._validate_connection_prerequisites(other_node):
+            return {"status": "fail", "message": "Connection prerequisites not met"}
+
+        connection_established = asyncio.Event()
+        self._udp_server.set_connection_callback(connection_established.set)
+
+        # Send punch messages
+        punch_task = asyncio.create_task(self._send_punch_messages(other_node))
+
+        try:
+            await asyncio.wait_for(connection_established.wait(), timeout=timeout)
+            return {"status": "success", "message": "Connection established"}
+        except asyncio.TimeoutError:
+            return {"status": "fail", "message": "Connection attempt timed out"}
+        finally:
+            punch_task.cancel()
+            self._udp_server.set_connection_callback(None)
+
+    async def send_message(self, message: str, target_ip: IPvAnyAddress, target_port: int) -> Dict[str, Any]:
+        """
+        Send a message to a specified target IP and port.
+
+        :param str message: The message to send.
+        :param IPvAnyAddress target_ip: The target IP address.
+        :param int target_port: The target port number.
+        :return Dict[str, Any]: A dictionary containing the send status and message.
         """
         try:
-            async with httpx.AsyncClient() as client:
-                await client.put(f"{self._server_url}/nodes", json=self._node.model_dump(mode="json"))
-        except httpx.RequestError as e:
-            self._logger.error(f" ❌ Failed to update node info: {e}")
+            self._udp_server.send_message(message, str(target_ip), target_port)
+            self._logger.info(f" ✅ Sent message to {target_ip}:{target_port}")
+            return {"status": "success", "message": f"Message sent to {target_ip}:{target_port}"}
+        except Exception as e:
+            error_message = f"Failed to send message: {e}"
+            self._logger.error(f" ❌ {error_message}")
+            return {"status": "error", "message": error_message}
 
-    def handle_incoming_message(self, message: str, sender: Tuple[str, int]) -> None:
-        """
-        Handle an incoming message and set the response received flag.
+    ######################
+    #  Server management #
+    ######################
 
-        :param str message: The received message.
-        :param Tuple[str, int] sender: The sender's address (IP, port).
+    async def _start_server(self) -> None:
         """
-        self._logger.info(f" 💡 Received message from {sender}: {message}")
-        self._response_received.set()
+        Start the server to accept incoming connections.
+        """
+        if self._server_status:
+            self._logger.info(" 💡 Server is already running")
+            return
+        try:
+            await self._udp_server.start(str(self._node.local_ip), self._node.local_port)
+            self._logger.info(f" ✅ Serving on {self._node.local_ip}:{self._node.local_port}")
+            self._server_status = True
+        except OSError as e:
+            error_message = f"Failed to start server: {e}"
+            self._logger.error(f" ❌ {error_message}")
+            raise
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server from accepting incoming connections.
+        """
+        if not self._server_status:
+            self._logger.info(" 💡 Server is not running")
+            return
+
+        await self._udp_server.stop()
+        self._server_status = False
+        self._logger.info(" ✅ Server has been stopped")
+
+    #######################
+    #  Network discovery  #
+    #######################
 
     async def _discover_public_ip_and_port(self) -> Tuple[Optional[IPvAnyAddress], Optional[int]]:
         """
@@ -290,6 +304,10 @@ class Client:
         )
         return await loop.run_in_executor(None, get_ip_info_partial)
 
+    ####################
+    #  Helper methods  #
+    ####################
+
     def _validate_connection_prerequisites(self, other_node: Node) -> bool:
         """
         Validate the prerequisites for establishing a connection.
@@ -303,53 +321,39 @@ class Client:
         if not other_node.public_ip or not other_node.public_port:
             self._logger.warning(f" ⚠️ The other node {other_node} has not discovered its public IP and port yet.")
             return False
-        if not self._transport:
-            self._logger.warning(" ⚠️ The current node is not listening for response yet.")
+        if not self._server_status:
+            self._logger.warning(" ⚠️ The current node is not listening for responses yet.")
             return False
         return True
 
-    async def _start_server(self) -> Dict[str, Any]:
+    async def _send_punch_messages(self, other_node: Node, n_tries: int = 30) -> None:
         """
-        Start the server to accept incoming connections.
+        Send punch messages to initiate hole punching.
 
-        :return Dict[str, Any]: A dictionary containing the start status and message.
+        :param Node other_node: The node to send punch messages to.
+        :param int n_tries: The number of tries to send punch messages.
         """
-        if self._server_status:
-            self._logger.info(" 💡 Server is already running")
-            return {"status": "success", "message": "Server is already running"}
-        try:
-            loop = asyncio.get_running_loop()
-            self._send_socket.bind((str(self._node.local_ip), 0))  # Use a different port for sending
-            self._udp_server = UDPServer(self._send_socket)
-            self._transport, _ = await loop.create_datagram_endpoint(
-                lambda: self._udp_server,
-                local_addr=(str(self._node.local_ip), self._node.local_port),
-            )
-            self._logger.info(f" ✅ Serving on {self._node.local_ip}:{self._node.local_port}")
-            self._server_status = True
-            return {"status": "success", "message": f"Server started on {self._node.local_ip}:{self._node.local_port}"}
-        except OSError as e:
-            error_message = f"Failed to start server: {e}"
-            self._logger.error(f" ❌ {error_message}")
-            return {"status": "fail", "message": error_message}
+        message = f"punch:{self._node.public_ip}:{self._node.public_port}"
+        for _ in range(n_tries):
+            if other_node.public_ip is not None and other_node.public_port is not None:
+                await self.send_message(message, other_node.public_ip, other_node.public_port)
+                await asyncio.sleep(1)  # Wait a second between punches
 
-    async def _stop_server(self) -> Dict[str, Any]:
+    def _handle_message(self, message: str, sender: Tuple[str, int]) -> None:
         """
-        Stop the server from accepting incoming connections.
+        Handle an incoming message.
 
-        :return Dict[str, Any]: A dictionary containing the stop status and message.
+        :param str message: The received message.
+        :param Tuple[str, int] sender: The sender's address (IP, port).
         """
-        if not self._server_status:
-            self._logger.info(" 💡 Server is not running")
-            return {"status": "success", "message": "Server is not running"}
-        if self._transport:
-            self._transport.close()
-            self._transport = None
-        if self._send_socket:
-            self._send_socket.close()
-        self._server_status = False
-        self._logger.info(" ✅ Server has been stopped")
-        return {"status": "success", "message": "Server has been stopped"}
+        self._logger.info(f" 💡 Received message from {sender}: {message}")
+        if message.startswith("punch"):
+            # Respond to punch message
+            self._udp_server.send_message("pong", sender[0], sender[1])
+        elif message.startswith("pong"):
+            # Connection established
+            if self._udp_server.connection_callback:
+                self._udp_server.connection_callback()
 
     def __str__(self) -> str:
         """
