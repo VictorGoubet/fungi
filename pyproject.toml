@@ -1,21 +1,45 @@
-[tool.poetry]
+[project]
 name = "fungi"
 version = "0.1.0"
 description = "A simple educational P2P project demonstrating the principles of peer-to-peer connectivity and decentralized networking"
-authors = ["victor <victorgoubet@orange.fr>"]
+authors = [{ name = "victor", email = "victorgoubet@orange.fr" }]
 readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.7.4,<3.0.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-pydantic = "^2.7.4"
+[project.optional-dependencies]
+client = [
+    "gradio>=4.37.2,<5.0.0",
+    "pystun3>=2.0.0,<3.0.0",
+    "httpx>=0.27.2,<1.0.0",
+]
+server = [
+    "fastapi>=0.115.5,<1.0.0",
+    "uvicorn>=0.32.1,<1.0.0",
+    "httpx>=0.27.2,<1.0.0",
+    "sqlmodel>=0.0.16,<1.0.0",
+    "aiosqlite>=0.20.0,<1.0.0",
+    "pydantic-settings>=2.0.0,<3.0.0"
+]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0,<1.0.0",
+    "uv>=0.1.36,<1.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "uvicorn>=0.32.1,<1.0.0",
+    "fastapi>=0.115.5,<1.0.0",
+    "httpx>=0.27.2,<1.0.0",
+    "sqlmodel>=0.0.16,<1.0.0",
+    "aiosqlite>=0.20.0,<1.0.0",
+    "pydantic-settings>=2.0.0,<3.0.0"
+]
 
-pystun3 = "^2.0.0"
-gradio = "^4.37.2"
-redis = "^5.1.1"
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
 
-[tool.poetry.scripts]
-launch-fungi = "fungi.client.app:main"
+[tool.hatch.build.targets.wheel]
+packages = ["fungi"]

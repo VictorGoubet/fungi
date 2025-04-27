@@ -31,6 +31,23 @@ docker run -p 8000:8000 victorgoubet/fungi_server:v1
 
 > 💡 Replace `v1` with your desired release version.
 
+## 🛠️ Server Management
+
+The server can now be built, deployed, and run using the Makefile at the project root. Example commands:
+
+```bash
+# Build the server Docker image
+make build-server
+
+# Deploy (push) the server image to Docker Hub
+make deploy-server IMAGE_VERSION=your_version DOCKER_USERNAME=your_docker_username
+
+# Run the server from Docker Hub
+make run-server IMAGE_VERSION=your_version DOCKER_USERNAME=your_docker_username
+```
+
+- Edit the `.env_example` at the project root and copy it to `.env` to configure environment variables.
+
 ## 🛠️ Client Installation
 
 Choose between pip or Docker for client installation:

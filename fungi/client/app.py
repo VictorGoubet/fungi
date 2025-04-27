@@ -81,7 +81,9 @@ class P2PNetworkLauncher:
         :return List[Any]: A list containing the updated UI components.
         """
         result: Dict[str, Any] = await self._client.leave_network()
-        self._connection_status = "off" if result["status"] == "success" else self._connection_status
+        self._connection_status = (
+            "off" if result["status"] == "success" else self._connection_status
+        )
         return await self._update_ui()
 
     async def _update_current_nodes(self) -> List[Node]:
@@ -125,7 +127,9 @@ class P2PNetworkLauncher:
         """
         if target_node and target_node == self._connected_node:
             ip, port = target_node.split(":")
-            result: Dict[str, Any] = await self._client.send_message(message, ip_address(ip), int(port))
+            result: Dict[str, Any] = await self._client.send_message(
+                message, ip_address(ip), int(port)
+            )
             if result["status"] == "success":
                 self._add_chat_message(f"You: {message}")
         return self._chat_history
@@ -137,17 +141,26 @@ class P2PNetworkLauncher:
         :return List[Any]: A list containing the updated UI components.
         """
         current_nodes = await self._update_current_nodes()
-        node_choices = [f"{node.public_ip}:{node.public_port}" for node in current_nodes if node != self._client._node]
+        node_choices = [
+            f"{node.public_ip}:{node.public_port}"
+            for node in current_nodes
+            if node != self._client._node
+        ]
         return [
             self._log,
             Dropdown(
-                choices=node_choices, interactive=True, value=self._connected_node if self._connected_node else None
+                choices=node_choices,
+                interactive=True,
+                value=self._connected_node if self._connected_node else None,
             ),
             Button(interactive=self._connection_status == "off"),
             Button(interactive=self._connection_status == "on"),
             Button(interactive=self._connection_status == "on"),
             Button(interactive=bool(node_choices)),
-            Button(interactive=self._connection_status == "on" and self._connected_node is not None),
+            Button(
+                interactive=self._connection_status == "on"
+                and self._connected_node is not None
+            ),
         ]
 
     def run(self) -> None:
@@ -161,31 +174,73 @@ class P2PNetworkLauncher:
                 leave_btn = Button("Leave Network", interactive=False)
                 refresh_btn = Button("Refresh Nodes", interactive=False)
 
-            node_selector = Dropdown(label="Available Nodes", choices=[], interactive=False)
+            node_selector = Dropdown(
+                label="Available Nodes", choices=[], interactive=False
+            )
             connect_btn = Button("Connect to Node", interactive=False)
-            log_output = Textbox(label="Logs", placeholder="Logs will appear here...", lines=10)
+            log_output = Textbox(
+                label="Logs", placeholder="Logs will appear here...", lines=10
+            )
 
             with Row():
-                chat_message = Textbox(label="Chat Message", placeholder="Type your message here...")
+                chat_message = Textbox(
+                    label="Chat Message", placeholder="Type your message here..."
+                )
                 send_btn = Button("Send Message", interactive=False)
-            chat_log_output = Textbox(label="Chat Log", placeholder="Chat messages will appear here...", lines=10)
+            chat_log_output = Textbox(
+                label="Chat Log",
+                placeholder="Chat messages will appear here...",
+                lines=10,
+            )
 
             join_btn.click(
                 fn=self._join_network,
-                outputs=[log_output, node_selector, join_btn, leave_btn, refresh_btn, connect_btn, send_btn],
+                outputs=[
+                    log_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
             )
             leave_btn.click(
                 fn=self._leave_network,
-                outputs=[log_output, node_selector, join_btn, leave_btn, refresh_btn, connect_btn, send_btn],
+                outputs=[
+                    log_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
             )
             refresh_btn.click(
                 fn=self._update_ui,
-                outputs=[log_output, node_selector, join_btn, leave_btn, refresh_btn, connect_btn, send_btn],
+                outputs=[
+                    log_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
             )
             connect_btn.click(
                 fn=self._connect_to_node,
                 inputs=[node_selector],
-                outputs=[log_output, node_selector, join_btn, leave_btn, refresh_btn, connect_btn, send_btn],
+                outputs=[
+                    log_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
             )
             send_btn.click(
                 fn=self._send_chat_message,

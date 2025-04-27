@@ -1,10 +1,18 @@
 import json
-from typing import Dict, List
-
 from fastapi import FastAPI, HTTPException, Query
-from node import Node
+from fungi.models.node import Node
 from pydantic import IPvAnyAddress, ValidationError
-from service import NetworkService
+from fungi.server.service import NetworkService
+from contextlib import asynccontextmanager
+
+network_service = NetworkService()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await network_service.init_db()
+    yield
+
 
 app = FastAPI(
     title="P2P Network API",
@@ -14,31 +22,25 @@ app = FastAPI(
         "name": "Victor Goubet",
         "email": "victorgoubet@orange.fr",
     },
+    lifespan=lifespan,
 )
-
-network_service = NetworkService()
 
 
 @app.get(
     "/nodes",
     tags=["nodes"],
-    response_model=List[Node],
+    response_model=list[Node],
     responses={
         200: {
             "description": "A list of nodes currently in the network",
-            "content": {
-                "application/json": {
-                    "example": [
-                        {"public_ip": "192.168.1.1", "public_port": 8080},
-                        {"public_ip": "192.168.1.2", "public_port": 9090},
-                    ]
-                }
-            },
+            "content": {"application/json": {"example": [Node.get_example()]}},
         }
     },
 )
-async def get_nodes() -> List[Node]:
-    """Get the list of nodes in the network"""
+async def get_nodes() -> list[Node]:
+    """
+    Get the list of nodes in the network.
+    """
     return await network_service.list_nodes()
 
 
@@ -50,16 +52,23 @@ async def get_nodes() -> List[Node]:
     responses={
         201: {
             "description": "The added node",
-            "content": {"application/json": {"example": {"public_ip": "192.168.1.1", "public_port": 8080}}},
+            "content": {"application/json": {"example": Node.get_example()}},
         },
         400: {
             "description": "Invalid request data",
-            "content": {"application/json": {"example": {"detail": "Invalid request data"}}},
+            "content": {
+                "application/json": {"example": {"detail": "Invalid request data"}}
+            },
         },
     },
 )
 async def add_node(node: Node) -> Node:
-    """Add a new node to the network"""
+    """
+    Add a new node to the network.
+
+    :param Node node: The node to add.
+    :return Node: The added node.
+    """
     try:
         await network_service.add_node(node)
         return node
@@ -77,12 +86,19 @@ async def add_node(node: Node) -> Node:
         },
         400: {
             "description": "Invalid request data",
-            "content": {"application/json": {"example": {"detail": "Invalid request data"}}},
+            "content": {
+                "application/json": {"example": {"detail": "Invalid request data"}}
+            },
         },
     },
 )
-async def remove_node(public_ip: IPvAnyAddress = Query(...), public_port: int = Query(...)) -> None:
-    """Remove a node from the network"""
+async def remove_node(
+    public_ip: IPvAnyAddress = Query(...),
+    public_port: int = Query(...),
+) -> None:
+    """
+    Remove a node from the network.
+    """
     node = Node(public_ip=public_ip, public_port=public_port)
     try:
         await network_service.remove_node(node)
@@ -97,16 +113,22 @@ async def remove_node(public_ip: IPvAnyAddress = Query(...), public_port: int = 
     responses={
         200: {
             "description": "Node information updated successfully",
-            "content": {"application/json": {"example": {"message": "Node information updated"}}},
+            "content": {
+                "application/json": {"example": {"message": "Node information updated"}}
+            },
         },
         400: {
             "description": "Invalid request data",
-            "content": {"application/json": {"example": {"detail": "Invalid request data"}}},
+            "content": {
+                "application/json": {"example": {"detail": "Invalid request data"}}
+            },
         },
     },
 )
-async def update_node(node: Node) -> Dict[str, str]:
-    """Update node information"""
+async def update_node(node: Node) -> dict[str, str]:
+    """
+    Update node information.
+    """
     try:
         await network_service.update_node(node)
         return {"message": "Node information updated"}

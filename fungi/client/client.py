@@ -2,7 +2,7 @@ import asyncio
 from functools import partial
 from ipaddress import ip_address
 from logging import INFO, Logger
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import httpx
 import stun
@@ -10,7 +10,7 @@ from pydantic import IPvAnyAddress
 
 from fungi.client.udp import UDPServer
 from fungi.models.node import Node
-from fungi.utils.constants import SERVER_URL, STUN_SERVER
+from fungi.utils.constants import config
 from fungi.utils.logger import get_logger
 
 
@@ -19,7 +19,7 @@ class Client:
 
     def __init__(
         self,
-        server_url: str = SERVER_URL,
+        server_url: str = config.server_url,
         logger: Logger = get_logger(name="P2P_Client", level=INFO),
     ) -> None:
         """
@@ -49,7 +49,10 @@ class Client:
             return {"status": "success", "message": "Already part of the network"}
 
         if not await self._discover_public_ip_and_port():
-            return {"status": "fail", "message": "Failed to discover public IP and port"}
+            return {
+                "status": "fail",
+                "message": "Failed to discover public IP and port",
+            }
 
         insert_result = await self._insert_node()
         if insert_result["status"] != "success":
@@ -94,7 +97,9 @@ class Client:
                     self._node.public_port = new_port
                     update_result = await self._update_node()
                     if update_result["status"] != "success":
-                        self._logger.error(f" ❌ Failed to update node info: {update_result['message']}")
+                        self._logger.error(
+                            f" ❌ Failed to update node info: {update_result['message']}"
+                        )
 
                     if port_changed:
                         self._logger.info(
@@ -119,7 +124,9 @@ class Client:
         node_data = self._node.model_dump(mode="json")
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(f"{self._server_url}/nodes", json=node_data)
+                response = await client.post(
+                    f"{self._server_url}/nodes", json=node_data
+                )
                 response.raise_for_status()
             return {"status": "success", "message": "Node inserted successfully"}
         except httpx.HTTPStatusError as e:
@@ -140,7 +147,9 @@ class Client:
         params = self._node.model_dump(mode="json")
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.delete(f"{self._server_url}/nodes", params=params)
+                response = await client.delete(
+                    f"{self._server_url}/nodes", params=params
+                )
                 response.raise_for_status()
             return {"status": "success", "message": "Node deleted successfully"}
         except httpx.HTTPStatusError as e:
@@ -160,7 +169,9 @@ class Client:
         """
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.put(f"{self._server_url}/nodes", json=self._node.model_dump(mode="json"))
+                response = await client.put(
+                    f"{self._server_url}/nodes", json=self._node.model_dump(mode="json")
+                )
                 response.raise_for_status()
             return {"status": "success", "message": "Node updated successfully"}
         except httpx.HTTPStatusError as e:
@@ -221,7 +232,9 @@ class Client:
             punch_task.cancel()
             self._udp_server.set_connection_callback(None)
 
-    async def send_message(self, message: str, target_ip: IPvAnyAddress, target_port: int) -> Dict[str, Any]:
+    async def send_message(
+        self, message: str, target_ip: IPvAnyAddress, target_port: int
+    ) -> Dict[str, Any]:
         """
         Send a message to a specified target IP and port.
 
@@ -233,7 +246,10 @@ class Client:
         try:
             self._udp_server.send_message(message, str(target_ip), target_port)
             self._logger.info(f" ✅ Sent message to {target_ip}:{target_port}")
-            return {"status": "success", "message": f"Message sent to {target_ip}:{target_port}"}
+            return {
+                "status": "success",
+                "message": f"Message sent to {target_ip}:{target_port}",
+            }
         except Exception as e:
             error_message = f"Failed to send message: {e}"
             self._logger.error(f" ❌ {error_message}")
@@ -251,8 +267,12 @@ class Client:
             self._logger.info(" 💡 Server is already running")
             return
         try:
-            await self._udp_server.start(str(self._node.local_ip), self._node.local_port)
-            self._logger.info(f" ✅ Serving on {self._node.local_ip}:{self._node.local_port}")
+            await self._udp_server.start(
+                str(self._node.local_ip), self._node.local_port
+            )
+            self._logger.info(
+                f" ✅ Serving on {self._node.local_ip}:{self._node.local_port}"
+            )
             self._server_status = True
         except OSError as e:
             error_message = f"Failed to start server: {e}"
@@ -275,15 +295,29 @@ class Client:
     #  Network discovery  #
     #######################
 
-    async def _discover_public_ip_and_port(self) -> Tuple[Optional[IPvAnyAddress], Optional[int]]:
+    async def _discover_public_ip_and_port(
+        self,
+    ) -> tuple[IPvAnyAddress | None, int | None]:
         """
-        Discover the public IP and port using a STUN server.
+        Discover the public IP, port, and NAT type using a STUN server. Store the NAT type in the node and raise an exception if not a cone NAT.
 
-        :return Tuple[Optional[IPvAnyAddress], Optional[int]]: A tuple containing the public IP and port.
+        :return tuple[IPvAnyAddress | None, int | None]: The public IP and port, or (None, None) on failure.
+        :raises RuntimeError: If the NAT type is not a supported cone NAT.
         """
         try:
-            _, external_ip, external_port = await self._async_get_ip_info()
-            self._logger.debug(f" 💡 Discovered public IP and port: {external_ip}:{external_port}")
+            nat_type, external_ip, external_port = await self._async_get_ip_info()
+            self._node.nat_type = nat_type
+            self._logger.info(f" 💡 NAT type detected: {nat_type}")
+            if nat_type not in {"Full Cone", "Restricted Cone", "Port Restricted Cone"}:
+                self._logger.error(
+                    f" ❌ Unsupported NAT type: {nat_type}. Only cone NATs are supported."
+                )
+                raise RuntimeError(
+                    f"Unsupported NAT type: {nat_type}. Only cone NATs are supported."
+                )
+            self._logger.debug(
+                f" 💡 Discovered public IP and port: {external_ip}:{external_port}"
+            )
             return ip_address(external_ip), external_port
         except Exception as e:
             self._logger.error(f" ❌ Failed to discover public IP and port: {e}")
@@ -298,8 +332,8 @@ class Client:
         loop = asyncio.get_running_loop()
         get_ip_info_partial = partial(
             stun.get_ip_info,
-            stun_host=STUN_SERVER[0],
-            stun_port=STUN_SERVER[1],
+            stun_host=config.stun_server_host,
+            stun_port=config.stun_server_port,
             source_port=self._node.local_port,
         )
         return await loop.run_in_executor(None, get_ip_info_partial)
@@ -316,13 +350,19 @@ class Client:
         :return bool: True if the prerequisites are met, False otherwise.
         """
         if not self._node.public_ip or not self._node.public_port:
-            self._logger.warning(" ⚠️ This node has not discovered its public IP and port yet.")
+            self._logger.warning(
+                " ⚠️ This node has not discovered its public IP and port yet."
+            )
             return False
         if not other_node.public_ip or not other_node.public_port:
-            self._logger.warning(f" ⚠️ The other node {other_node} has not discovered its public IP and port yet.")
+            self._logger.warning(
+                f" ⚠️ The other node {other_node} has not discovered its public IP and port yet."
+            )
             return False
         if not self._server_status:
-            self._logger.warning(" ⚠️ The current node is not listening for responses yet.")
+            self._logger.warning(
+                " ⚠️ The current node is not listening for responses yet."
+            )
             return False
         return True
 
@@ -336,7 +376,9 @@ class Client:
         message = f"punch:{self._node.public_ip}:{self._node.public_port}"
         for _ in range(n_tries):
             if other_node.public_ip is not None and other_node.public_port is not None:
-                await self.send_message(message, other_node.public_ip, other_node.public_port)
+                await self.send_message(
+                    message, other_node.public_ip, other_node.public_port
+                )
                 await asyncio.sleep(1)  # Wait a second between punches
 
     def _handle_message(self, message: str, sender: Tuple[str, int]) -> None:

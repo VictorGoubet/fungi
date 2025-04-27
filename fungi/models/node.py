@@ -1,32 +1,80 @@
-from typing import Optional
+from sqlmodel import SQLModel, Field
+from enum import Enum
 
-from pydantic import BaseModel, Field, IPvAnyAddress
+
+class NatType(str, Enum):
+    FULL_CONE = "Full Cone"
+    RESTRICTED_CONE = "Restricted Cone"
+    PORT_RESTRICTED_CONE = "Port Restricted Cone"
+    SYMMETRIC = "Symmetric"
 
 
-class Node(BaseModel):
+class Node(SQLModel, table=True):
     """
-    Represents a node in the P2P network.
+    Represents a node in the P2P network (as a SQLModel table).
     """
 
-    local_ip: IPvAnyAddress = Field(default="127.0.0.1", description="Local IP address of the node")
-    local_port: int = Field(default=0, description="Local port of the node")
-    public_ip: Optional[IPvAnyAddress] = Field(default=None, description="Public IP address of the node")
-    public_port: Optional[int] = Field(default=None, description="Public port of the node")
+    id: int | None = Field(
+        default=None,
+        primary_key=True,
+        json_schema_extra={"examples": [1]},
+    )
+    local_ip: str = Field(
+        default="127.0.0.1",
+        description="Local IP address of the node",
+        json_schema_extra={"examples": ["192.168.1.100"]},
+    )
+    local_port: int = Field(
+        default=0,
+        description="Local port of the node",
+        json_schema_extra={"examples": [8000]},
+    )
+    public_ip: str | None = Field(
+        default=None,
+        description="Public IP address of the node",
+        json_schema_extra={"examples": ["203.0.113.1"]},
+    )
+    public_port: int | None = Field(
+        default=None,
+        description="Public port of the node",
+        json_schema_extra={"examples": [9000]},
+    )
+    nat_type: NatType | None = Field(
+        default=None,
+        description="NAT type of the node",
+        json_schema_extra={"examples": [NatType.FULL_CONE]},
+    )
 
-    class Config:
-        """
-        Pydantic configuration for the Node model.
-        """
-
-        arbitrary_types_allowed = True
-        json_schema_extra = {
-            "example": {
-                "local_ip": "192.168.1.100",
-                "local_port": 8000,
-                "public_ip": "203.0.113.1",
-                "public_port": 9000,
-            }
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": 1,
+                    "local_ip": "192.168.1.100",
+                    "local_port": 8000,
+                    "public_ip": "203.0.113.1",
+                    "public_port": 9000,
+                    "nat_type": "Full Cone"
+                }
+            ]
         }
+    }
+
+    @classmethod
+    def get_example(cls) -> dict[str, any]:
+        """
+        Dynamically build an example using the 'examples' metadata of each field.
+        """
+        example = {}
+        for field_name, model_field in cls.model_fields.items():
+            meta = model_field.metadata.get("json_schema_extra")
+            value = None
+            if meta and "examples" in meta:
+                value = meta["examples"][0]
+                if isinstance(value, Enum):
+                    value = value.value
+            example[field_name] = value
+        return example
 
     def __str__(self) -> str:
         """

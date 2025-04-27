@@ -1,89 +1,101 @@
-import asyncio
-import os
-from typing import Any, Awaitable, Dict, List
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from fungi.models.node import Node
+import logging
+from fungi.utils.constants import config
 
-import redis
-from node import Node
-from pydantic import BaseModel, Field, PrivateAttr
 
+class NetworkService:
+    """
+    Signaling server for managing P2P network nodes in SQLite using SQLModel.
+    """
 
-class NetworkService(BaseModel):
-    """Signaling server for managing P2P network nodes"""
-
-    redis_host: str = Field(default=os.environ.get("REDIS_HOST", "localhost"), description="Redis host")
-    redis_port: int = Field(default=int(os.environ.get("REDIS_PORT", 6379)), description="Redis port")
-    redis_db: int = Field(default=0, description="Redis database index")
-    _redis_client: redis.Redis = PrivateAttr(default=None)
-    _redis_key: str = PrivateAttr(default="p2p_nodes")
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    def __init__(self, **data):
-        """Initialize the service"""
-        super().__init__(**data)
-        self._redis_client = redis.Redis(host=self.redis_host, port=self.redis_port, db=self.redis_db)
-
-    async def _add_node_to_storage(self, node: Node) -> None:
+    def __init__(self) -> None:
         """
-        Add a node to the Redis storage.
-
-        :param Node node: The node to add.
+        Initialize the NetworkService and connect to SQLite.
         """
-        node_key = f"{node.public_ip}:{node.public_port}"
-        node_data = node.model_dump_json()
-        await asyncio.to_thread(self._redis_client.hset, self._redis_key, node_key, node_data)
+        self.engine = create_async_engine(config.sqlite_db_url, echo=False, future=True)
+        self._logger = logging.getLogger("P2P_Server")
 
-    async def _remove_node_from_storage(self, node: Node) -> None:
+    async def init_db(self) -> None:
         """
-        Remove a node from the Redis storage.
-
-        :param Node node: The node to remove.
+        Initialize the database and create tables if they do not exist.
         """
-        node_key = f"{node.public_ip}:{node.public_port}"
-        await asyncio.to_thread(self._redis_client.hdel, self._redis_key, node_key)
-
-    async def _load_nodes_from_storage(self) -> List[Node]:
-        """
-        Load nodes from the Redis storage.
-
-        :return List[Node]: A list of nodes currently in the network.
-        """
-        nodes_data: Awaitable[dict[Any, Any]] | Dict[Any, Any] = await asyncio.to_thread(
-            self._redis_client.hgetall, self._redis_key
-        )
-        if isinstance(nodes_data, dict):
-            return [Node.model_validate_json(node_data) for node_data in nodes_data.values()]
-        return []
+        async with self.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        self._logger.info("✅ SQLite DB initialized and tables created.")
 
     async def add_node(self, node: Node) -> None:
         """
         Add a node to the network.
 
-        :param Node node: The node to add to the network.
+        :param Node node: The node to add.
         """
-        await self._add_node_to_storage(node)
+        async with AsyncSession(self.engine) as session:
+            session.add(node)
+            await session.commit()
+        self._logger.info(f"✅ Node added: {node.public_ip}:{node.public_port}")
 
     async def remove_node(self, node: Node) -> None:
         """
         Remove a node from the network.
 
-        :param Node node: The node to remove from the network.
+        :param Node node: The node to remove.
         """
-        await self._remove_node_from_storage(node)
+        async with AsyncSession(self.engine) as session:
+            statement = select(Node).where(
+                Node.public_ip == node.public_ip, Node.public_port == node.public_port
+            )
+            result = await session.exec(statement)
+            db_node = result.first()
+            if db_node:
+                await session.delete(db_node)
+                await session.commit()
+                self._logger.info(
+                    f"❎ Node removed: {node.public_ip}:{node.public_port}"
+                )
+            else:
+                self._logger.warning(
+                    f"❎ Node not found: {node.public_ip}:{node.public_port}"
+                )
 
-    async def list_nodes(self) -> List[Node]:
+    async def list_nodes(self) -> list[Node]:
         """
         List all nodes in the network.
 
-        :return List[Node]: A list of nodes currently in the network.
+        :return list[Node]: A list of all nodes in the network.
         """
-        return await self._load_nodes_from_storage()
+        async with AsyncSession(self.engine) as session:
+            statement = select(Node)
+            result = await session.exec(statement)
+            nodes = result.all()
+        return nodes
 
     async def update_node(self, node: Node) -> None:
         """
-        Update node information in the Redis storage.
+        Update node information in the SQLite DB.
 
-        :param Node node: The node with updated information.
+        :param Node node: The node to update.
         """
-        await self._add_node_to_storage(node)
+        async with AsyncSession(self.engine) as session:
+            statement = select(Node).where(
+                Node.public_ip == node.public_ip, Node.public_port == node.public_port
+            )
+            result = await session.exec(statement)
+            db_node = result.first()
+            if db_node:
+                db_node.local_ip = node.local_ip
+                db_node.local_port = node.local_port
+                db_node.nat_type = node.nat_type
+                await session.commit()
+                self._logger.info(
+                    f"💡 Node updated: {node.public_ip}:{node.public_port}"
+                )
+            else:
+                # If not found, add as new
+                session.add(node)
+                await session.commit()
+                self._logger.info(
+                    f"💡 Node added (via update): {node.public_ip}:{node.public_port}"
+                )
