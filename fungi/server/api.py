@@ -4,6 +4,7 @@ from fungi.models.node import Node
 from pydantic import IPvAnyAddress, ValidationError
 from fungi.server.service import NetworkService
 from contextlib import asynccontextmanager
+from sqlalchemy.exc import IntegrityError
 
 network_service = NetworkService()
 
@@ -60,6 +61,18 @@ async def get_nodes() -> list[Node]:
                 "application/json": {"example": {"detail": "Invalid request data"}}
             },
         },
+        409: {
+            "description": "A node with this id already exists.",
+            "content": {
+                "application/json": {"example": {"detail": "A node with this id already exists."}}
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {"example": {"detail": "Internal server error"}}
+            },
+        },
     },
 )
 async def add_node(node: Node) -> Node:
@@ -72,6 +85,8 @@ async def add_node(node: Node) -> Node:
     try:
         await network_service.add_node(node)
         return node
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="A node with this id already exists.")
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -88,6 +103,18 @@ async def add_node(node: Node) -> Node:
             "description": "Invalid request data",
             "content": {
                 "application/json": {"example": {"detail": "Invalid request data"}}
+            },
+        },
+        404: {
+            "description": "Node not found",
+            "content": {
+                "application/json": {"example": {"detail": "Node not found"}}
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {"example": {"detail": "Internal server error"}}
             },
         },
     },
@@ -121,6 +148,18 @@ async def remove_node(
             "description": "Invalid request data",
             "content": {
                 "application/json": {"example": {"detail": "Invalid request data"}}
+            },
+        },
+        404: {
+            "description": "Node not found",
+            "content": {
+                "application/json": {"example": {"detail": "Node not found"}}
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {"example": {"detail": "Internal server error"}}
             },
         },
     },

@@ -35,6 +35,8 @@ MANIFEST
 *.manifest
 *.spec
 
+uv.lock
+
 # Virtual environments
 venv/
 .venv/

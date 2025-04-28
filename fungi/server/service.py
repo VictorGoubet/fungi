@@ -34,8 +34,10 @@ class NetworkService:
         """
         async with AsyncSession(self.engine) as session:
             session.add(node)
+            public_ip = node.public_ip
+            public_port = node.public_port
             await session.commit()
-        self._logger.info(f"✅ Node added: {node.public_ip}:{node.public_port}")
+        self._logger.info(f"✅ Node added: {public_ip}:{public_port}")
 
     async def remove_node(self, node: Node) -> None:
         """
@@ -93,7 +95,6 @@ class NetworkService:
                     f"💡 Node updated: {node.public_ip}:{node.public_port}"
                 )
             else:
-                # If not found, add as new
                 session.add(node)
                 await session.commit()
                 self._logger.info(
