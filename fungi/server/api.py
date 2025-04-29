@@ -1,10 +1,11 @@
 import json
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fungi.models.node import Node
 from pydantic import IPvAnyAddress, ValidationError
 from fungi.server.service import NetworkService
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import IntegrityError
+from fastapi.responses import JSONResponse
 
 network_service = NetworkService()
 
@@ -35,14 +36,17 @@ app = FastAPI(
         200: {
             "description": "A list of nodes currently in the network",
             "content": {"application/json": {"example": [Node.get_example()]}},
-        }
+        },
     },
 )
 async def get_nodes() -> list[Node]:
     """
     Get the list of nodes in the network.
     """
-    return await network_service.list_nodes()
+    try:
+        return await network_service.list_nodes()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post(
@@ -67,12 +71,6 @@ async def get_nodes() -> list[Node]:
                 "application/json": {"example": {"detail": "A node with this id already exists."}}
             },
         },
-        500: {
-            "description": "Internal server error",
-            "content": {
-                "application/json": {"example": {"detail": "Internal server error"}}
-            },
-        },
     },
 )
 async def add_node(node: Node) -> Node:
@@ -83,7 +81,7 @@ async def add_node(node: Node) -> Node:
     :return Node: The added node.
     """
     try:
-        await network_service.add_node(node)
+        node = await network_service.add_node(node)
         return node
     except IntegrityError:
         raise HTTPException(status_code=409, detail="A node with this id already exists.")
@@ -111,12 +109,6 @@ async def add_node(node: Node) -> Node:
                 "application/json": {"example": {"detail": "Node not found"}}
             },
         },
-        500: {
-            "description": "Internal server error",
-            "content": {
-                "application/json": {"example": {"detail": "Internal server error"}}
-            },
-        },
     },
 )
 async def remove_node(
@@ -126,7 +118,7 @@ async def remove_node(
     """
     Remove a node from the network.
     """
-    node = Node(public_ip=public_ip, public_port=public_port)
+    node = Node(public_ip=str(public_ip), public_port=public_port)
     try:
         await network_service.remove_node(node)
     except (ValidationError, json.JSONDecodeError) as e:
@@ -156,12 +148,6 @@ async def remove_node(
                 "application/json": {"example": {"detail": "Node not found"}}
             },
         },
-        500: {
-            "description": "Internal server error",
-            "content": {
-                "application/json": {"example": {"detail": "Internal server error"}}
-            },
-        },
     },
 )
 async def update_node(node: Node) -> dict[str, str]:
@@ -173,3 +159,11 @@ async def update_node(node: Node) -> dict[str, str]:
         return {"message": "Node information updated"}
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )

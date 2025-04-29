@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from fungi.models.node import Node
 import logging
 from fungi.utils.constants import config
+from fastapi import HTTPException
 
 
 class NetworkService:
@@ -26,7 +27,7 @@ class NetworkService:
             await conn.run_sync(SQLModel.metadata.create_all)
         self._logger.info("✅ SQLite DB initialized and tables created.")
 
-    async def add_node(self, node: Node) -> None:
+    async def add_node(self, node: Node) -> Node:
         """
         Add a node to the network.
 
@@ -34,16 +35,17 @@ class NetworkService:
         """
         async with AsyncSession(self.engine) as session:
             session.add(node)
-            public_ip = node.public_ip
-            public_port = node.public_port
             await session.commit()
-        self._logger.info(f"✅ Node added: {public_ip}:{public_port}")
+            await session.refresh(node)
+        self._logger.info(f"✅ Node added: {node.public_ip}:{node.public_port}")
+        return node
 
     async def remove_node(self, node: Node) -> None:
         """
         Remove a node from the network.
 
         :param Node node: The node to remove.
+        :raises HTTPException 404: If the node does not exist.
         """
         async with AsyncSession(self.engine) as session:
             statement = select(Node).where(
@@ -61,6 +63,7 @@ class NetworkService:
                 self._logger.warning(
                     f"❎ Node not found: {node.public_ip}:{node.public_port}"
                 )
+                raise HTTPException(status_code=404, detail="Node not found")
 
     async def list_nodes(self) -> list[Node]:
         """
@@ -79,6 +82,7 @@ class NetworkService:
         Update node information in the SQLite DB.
 
         :param Node node: The node to update.
+        :raises HTTPException 404: If the node does not exist.
         """
         async with AsyncSession(self.engine) as session:
             statement = select(Node).where(
@@ -95,8 +99,7 @@ class NetworkService:
                     f"💡 Node updated: {node.public_ip}:{node.public_port}"
                 )
             else:
-                session.add(node)
-                await session.commit()
-                self._logger.info(
-                    f"💡 Node added (via update): {node.public_ip}:{node.public_port}"
+                self._logger.warning(
+                    f"❎ Node not found for update: {node.public_ip}:{node.public_port}"
                 )
+                raise HTTPException(status_code=404, detail="Node not found")

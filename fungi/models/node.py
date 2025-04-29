@@ -65,19 +65,7 @@ class Node(SQLModel, table=True):
         """
         Dynamically build an example using the 'examples' metadata of each field.
         """
-        example = {}
-        for field_name, model_field in cls.model_fields.items():
-            value = None
-            for meta in model_field.metadata:
-                if isinstance(meta, dict) and "json_schema_extra" in meta:
-                    js_extra = meta["json_schema_extra"]
-                    if js_extra and "examples" in js_extra:
-                        value = js_extra["examples"][0]
-                        if isinstance(value, Enum):
-                            value = value.value
-                        break
-            example[field_name] = value
-        return example
+        return cls.model_config["json_schema_extra"]["examples"][0]
 
     def __str__(self) -> str:
         """
