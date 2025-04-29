@@ -11,6 +11,10 @@ SERVER_IMAGE ?= fungi_server
 SERVER_DOCKERFILE = fungi/server/Dockerfile
 SERVER_REQUIREMENTS = fungi/server/requirements.txt
 
+# Client Docker image name
+CLIENT_IMAGE ?= fungi_client
+CLIENT_DOCKERFILE = fungi/client/Dockerfile
+
 # Default Docker username and image version
 DOCKER_USERNAME ?= victorgoubet
 IMAGE_VERSION ?= latest
@@ -47,6 +51,23 @@ clean:
 format:
 	uv run ruff format .
 	uv run ruff check . --fix
+
+# Build the client Docker image
+build-client:
+	docker build -f $(CLIENT_DOCKERFILE) -t $(CLIENT_IMAGE):latest .
+
+# Push the client image to Docker Hub
+push-client:
+	docker tag $(CLIENT_IMAGE):latest $(DOCKER_USERNAME)/$(CLIENT_IMAGE):$(IMAGE_VERSION)
+	docker push $(DOCKER_USERNAME)/$(CLIENT_IMAGE):$(IMAGE_VERSION)
+
+# Run the client image from Docker Hub
+run-client:
+	docker run -p $${GRADIO_PORT:-8080}:$${GRADIO_PORT:-8080} --env-file .env $(DOCKER_USERNAME)/$(CLIENT_IMAGE):$(IMAGE_VERSION)
+
+# Run the client in development mode (local code, auto-reload)
+dev-client:
+	uv run python -m fungi.client.app --env-file .env
 
 # Show this help message
 help:

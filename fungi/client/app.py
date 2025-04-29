@@ -1,23 +1,25 @@
 from ipaddress import ip_address
 from logging import DEBUG, Handler, Logger, LogRecord
-from typing import Any, Dict, List, Optional
-
 from gradio import Blocks, Button, Dropdown, Markdown, Row, Textbox
 
-from fungi.client.client import Client
+from fungi.client.client import P2PClient
 from fungi.models.node import Node
-from fungi.utils.constants import SERVER_URL
 from fungi.utils.logger import get_logger
-
+from fungi.utils.constants import config
 
 class LogHandler(Handler):
     """
     Custom logging handler to update the app's log panel.
     """
 
-    def __init__(self, callback):
+    def __init__(self, callback) -> None:
+        """
+        Initialize the LogHandler.
+
+        :param callback: The callback function to update the log panel.
+        """
         super().__init__()
-        self.callback = callback
+        self._callback = callback
 
     def emit(self, record: LogRecord) -> None:
         """
@@ -25,9 +27,9 @@ class LogHandler(Handler):
 
         :param LogRecord record: The log record to emit.
         """
-        if record.levelno > 10:  # Filter out DEBUG logs (level 10)
+        if record.levelno > 10:
             log_entry = self.format(record)
-            self.callback(log_entry)
+            self._callback(log_entry)
 
 
 class P2PNetworkLauncher:
@@ -42,11 +44,14 @@ class P2PNetworkLauncher:
         self._logger: Logger = get_logger(name="P2P_Launcher", level=DEBUG)
         client_logger = get_logger(name="P2P_Client", level=DEBUG)
         client_logger.addHandler(LogHandler(self._update_log))
-        self._client: Client = Client(server_url=SERVER_URL, logger=client_logger)
+        self._client: P2PClient = P2PClient(server_url=config.server_url, logger=client_logger)
         self._connection_status: str = "off"
         self._log: str = ""
         self._chat_history: str = ""
-        self._connected_node: Optional[str] = None
+        self._connected_node: str | None = None
+        self._nat_type: str | None = None
+        self._public_ip: str | None = None
+        self._public_port: int | None = None
 
     def _update_log(self, message: str) -> None:
         """
@@ -64,49 +69,78 @@ class P2PNetworkLauncher:
         """
         self._chat_history += f"{message}\n"
 
-    async def _join_network(self) -> List[Any]:
+    async def _detect_nat(self) -> list[any]:
         """
-        Join the P2P network.
+        Detect the NAT type and update the UI.
 
-        :return List[Any]: A list containing the updated UI components.
+        :return list[any]: The updated UI components.
         """
-        result: Dict[str, Any] = await self._client.join_network()
-        self._connection_status = "on" if result["status"] == "success" else "off"
+        result = await self._client.detect_nat()
+        if result.status == "success":
+            self._nat_type = str(result.message)
+        else:
+            self._nat_type = None
         return await self._update_ui()
 
-    async def _leave_network(self) -> List[Any]:
+    async def _discover_public_ip(self) -> list[any]:
         """
-        Leave the P2P network.
+        Discover the public IP and port and update the UI.
 
-        :return List[Any]: A list containing the updated UI components.
+        :return list[any]: The updated UI components.
         """
-        result: Dict[str, Any] = await self._client.leave_network()
+        result = await self._client.discover_public_ip()
+        if result["status"] == "success":
+            self._public_ip = result["public_ip"]
+            self._public_port = result["public_port"]
+            self._nat_type = str(result["nat_type"])
+        else:
+            self._public_ip = None
+            self._public_port = None
+        return await self._update_ui()
+
+    async def _join_network(self) -> list[any]:
+        """
+        Join the P2P network and update the UI.
+
+        :return list[any]: The updated UI components.
+        """
+        result = await self._client.join_network()
+        self._connection_status = "on" if result.status == "success" else "off"
+        return await self._update_ui()
+
+    async def _leave_network(self) -> list[any]:
+        """
+        Leave the P2P network and update the UI.
+
+        :return list[any]: The updated UI components.
+        """
+        result = await self._client.leave_network()
         self._connection_status = (
-            "off" if result["status"] == "success" else self._connection_status
+            "off" if result.status == "success" else self._connection_status
         )
         return await self._update_ui()
 
-    async def _update_current_nodes(self) -> List[Node]:
+    async def _update_current_nodes(self) -> list[Node]:
         """
         Update the list of current nodes in the network.
 
-        :return List[Node]: A list of current nodes.
+        :return list[Node]: A list of current nodes.
         """
         return await self._client.get_nodes()
 
-    async def _connect_to_node(self, target_node: str) -> List[Any]:
+    async def _connect_to_node(self, target_node: str) -> list[any]:
         """
-        Connect to a specific node in the network.
+        Connect to a specific node in the network and update the UI.
 
         :param str target_node: The node to connect to (in "ip:port" format).
-        :return List[Any]: A list containing the updated UI components.
+        :return list[any]: The updated UI components.
         """
         self._connection_status = "connecting"
         try:
             ip, port = target_node.split(":")
             node = Node(public_ip=ip_address(ip), public_port=int(port))
-            result: Dict[str, Any] = await self._client.connect_to(node)
-            if result["status"] == "success":
+            result = await self._client.connect_to(node)
+            if result.status == "success":
                 self._connection_status = "on"
                 self._connected_node = target_node
             else:
@@ -127,18 +161,18 @@ class P2PNetworkLauncher:
         """
         if target_node and target_node == self._connected_node:
             ip, port = target_node.split(":")
-            result: Dict[str, Any] = await self._client.send_message(
-                message, ip_address(ip), int(port)
+            result = await self._client.send_message(
+                message, ip, int(port)
             )
-            if result["status"] == "success":
+            if result.status == "success":
                 self._add_chat_message(f"You: {message}")
         return self._chat_history
 
-    async def _update_ui(self) -> List[Any]:
+    async def _update_ui(self) -> list[any]:
         """
         Update the UI components based on the current state.
 
-        :return List[Any]: A list containing the updated UI components.
+        :return list[any]: The updated UI components.
         """
         current_nodes = await self._update_current_nodes()
         node_choices = [
@@ -146,8 +180,14 @@ class P2PNetworkLauncher:
             for node in current_nodes
             if node != self._client._node
         ]
+        nat_status = self._nat_type if self._nat_type else "Unknown"
+        public_ip_status = self._public_ip if self._public_ip else "Unknown"
+        public_port_status = self._public_port if self._public_port else "Unknown"
         return [
             self._log,
+            nat_status,
+            public_ip_status,
+            public_port_status,
             Dropdown(
                 choices=node_choices,
                 interactive=True,
@@ -170,9 +210,15 @@ class P2PNetworkLauncher:
         with Blocks() as demo:
             Markdown("# P2P Network Launcher")
             with Row():
+                detect_nat_btn = Button("Detect NAT Type")
+                discover_ip_btn = Button("Discover Public IP/Port")
                 join_btn = Button("Join Network")
                 leave_btn = Button("Leave Network", interactive=False)
                 refresh_btn = Button("Refresh Nodes", interactive=False)
+
+            nat_type_output = Textbox(label="NAT Type", value="Unknown")
+            public_ip_output = Textbox(label="Public IP", value="Unknown")
+            public_port_output = Textbox(label="Public Port", value="Unknown")
 
             node_selector = Dropdown(
                 label="Available Nodes", choices=[], interactive=False
@@ -193,10 +239,43 @@ class P2PNetworkLauncher:
                 lines=10,
             )
 
+            detect_nat_btn.click(
+                fn=self._detect_nat,
+                outputs=[
+                    log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
+            )
+            discover_ip_btn.click(
+                fn=self._discover_public_ip,
+                outputs=[
+                    log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
+                    node_selector,
+                    join_btn,
+                    leave_btn,
+                    refresh_btn,
+                    connect_btn,
+                    send_btn,
+                ],
+            )
             join_btn.click(
                 fn=self._join_network,
                 outputs=[
                     log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
                     node_selector,
                     join_btn,
                     leave_btn,
@@ -209,6 +288,9 @@ class P2PNetworkLauncher:
                 fn=self._leave_network,
                 outputs=[
                     log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
                     node_selector,
                     join_btn,
                     leave_btn,
@@ -221,6 +303,9 @@ class P2PNetworkLauncher:
                 fn=self._update_ui,
                 outputs=[
                     log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
                     node_selector,
                     join_btn,
                     leave_btn,
@@ -234,6 +319,9 @@ class P2PNetworkLauncher:
                 inputs=[node_selector],
                 outputs=[
                     log_output,
+                    nat_type_output,
+                    public_ip_output,
+                    public_port_output,
                     node_selector,
                     join_btn,
                     leave_btn,

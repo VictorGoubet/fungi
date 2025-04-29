@@ -1,22 +1,26 @@
 import asyncio
 from socket import AF_INET, SOCK_DGRAM, socket
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
+from fungi.utils.logger import get_logger
 
 
 class UDPServer(asyncio.DatagramProtocol):
-    """A UDP server for handling P2P communications."""
+    """
+    A modular UDP server for handling P2P communications.
+    """
 
-    def __init__(self, message_handler: Callable[[str, Tuple[str, int]], None]) -> None:
+    def __init__(self, message_handler: Callable[[str, tuple[str, int]], None]) -> None:
         """
         Initialize the UDP server.
 
-        :param Callable[[str, Tuple[str, int]], None] message_handler: Callback function to handle received messages.
+        :param Callable[[str, tuple[str, int]], None] message_handler: Callback for received messages.
         """
         super().__init__()
         self._send_socket = socket(AF_INET, SOCK_DGRAM)
-        self._transport: Optional[asyncio.DatagramTransport] = None
+        self._transport: asyncio.DatagramTransport | None = None
         self._message_handler = message_handler
-        self.connection_callback: Optional[Callable[[], None]] = None
+        self._logger = get_logger("UDPServer")
+        self._connection_callback: Callable[[], None] | None = None
 
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         """
@@ -25,15 +29,17 @@ class UDPServer(asyncio.DatagramProtocol):
         :param asyncio.DatagramTransport transport: The transport representing the connection.
         """
         self._transport = transport
+        self._logger.info(" ✅ UDP server started.")
 
-    def datagram_received(self, data: bytes, addr: Tuple[str, int]) -> None:
+    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         """
         Called when a datagram is received.
 
         :param bytes data: The received data.
-        :param Tuple[str, int] addr: The address of the sender.
+        :param tuple[str, int] addr: The address of the sender.
         """
         message = data.decode()
+        self._logger.info(f" 💡 Received message from {addr}: {message}")
         self._message_handler(message, addr)
 
     def send_message(self, message: str, target_ip: str, target_port: int) -> None:
@@ -45,14 +51,15 @@ class UDPServer(asyncio.DatagramProtocol):
         :param int target_port: The target port number.
         """
         self._send_socket.sendto(message.encode(), (target_ip, target_port))
+        self._logger.info(f" ✅ Sent message to {target_ip}:{target_port}")
 
-    def set_connection_callback(self, callback: Optional[Callable[[], None]]) -> None:
+    def set_connection_callback(self, callback: Callable[[], None] | None) -> None:
         """
         Set the callback function for successful connections.
 
-        :param Optional[Callable[[], None]] callback: The callback function to handle successful connections.
+        :param Callable[[], None] | None callback: The callback function to handle successful connections.
         """
-        self.connection_callback = callback
+        self._connection_callback = callback
 
     async def start(self, ip: str, port: int) -> None:
         """
@@ -73,5 +80,5 @@ class UDPServer(asyncio.DatagramProtocol):
             self._transport = None
         if self._send_socket:
             self._send_socket.close()
-        # Wait a short time to ensure the socket is fully closed
         await asyncio.sleep(0.1)
+        self._logger.info(" ✅ UDP server stopped.")

@@ -1,12 +1,5 @@
 from sqlmodel import SQLModel, Field
-from enum import Enum
-
-
-class NatType(str, Enum):
-    FULL_CONE = "Full Cone"
-    RESTRICTED_CONE = "Restricted Cone"
-    PORT_RESTRICTED_CONE = "Port Restricted Cone"
-    SYMMETRIC = "Symmetric"
+from .nat_type import NatType
 
 
 class Node(SQLModel, table=True):
@@ -54,7 +47,7 @@ class Node(SQLModel, table=True):
                     "local_port": 8000,
                     "public_ip": "203.0.113.1",
                     "public_port": 9000,
-                    "nat_type": "Full Cone"
+                    "nat_type": "Full Cone",
                 }
             ]
         }

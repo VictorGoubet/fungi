@@ -68,7 +68,9 @@ async def get_nodes() -> list[Node]:
         409: {
             "description": "A node with this id already exists.",
             "content": {
-                "application/json": {"example": {"detail": "A node with this id already exists."}}
+                "application/json": {
+                    "example": {"detail": "A node with this id already exists."}
+                }
             },
         },
     },
@@ -84,7 +86,9 @@ async def add_node(node: Node) -> Node:
         node = await network_service.add_node(node)
         return node
     except IntegrityError:
-        raise HTTPException(status_code=409, detail="A node with this id already exists.")
+        raise HTTPException(
+            status_code=409, detail="A node with this id already exists."
+        )
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -105,9 +109,7 @@ async def add_node(node: Node) -> Node:
         },
         404: {
             "description": "Node not found",
-            "content": {
-                "application/json": {"example": {"detail": "Node not found"}}
-            },
+            "content": {"application/json": {"example": {"detail": "Node not found"}}},
         },
     },
 )
@@ -144,9 +146,7 @@ async def remove_node(
         },
         404: {
             "description": "Node not found",
-            "content": {
-                "application/json": {"example": {"detail": "Node not found"}}
-            },
+            "content": {"application/json": {"example": {"detail": "Node not found"}}},
         },
     },
 )
