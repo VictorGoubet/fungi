@@ -8,7 +8,7 @@ class AppConfig(BaseSettings):
     """
 
     server_url: str = Field(
-        "http://192.168.1.4:8000",
+        ...,
         description="URL of the signaling server",
     )
     stun_server_host: str = Field(
@@ -23,6 +23,11 @@ class AppConfig(BaseSettings):
         "sqlite+aiosqlite:///./nodes.db",
         description="SQLite database URL for node storage",
     )
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 # Singleton config instance

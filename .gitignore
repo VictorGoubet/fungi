@@ -36,7 +36,7 @@ MANIFEST
 *.spec
 
 uv.lock
-*.db
+nodes.db
 
 # Virtual environments
 venv/

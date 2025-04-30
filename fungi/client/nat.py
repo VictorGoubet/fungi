@@ -1,8 +1,9 @@
-from asyncio import get_running_loop
+import asyncio
+import socket
 from fungi.utils.logger import get_logger
-from fungi.models.nat_type import NatType
+from fungi.models.node import NatType
 from fungi.models.discovery import DiscoveryResult
-from stun import get_nat_type
+import stun
 
 
 class NATDetector:
@@ -25,6 +26,29 @@ class NATDetector:
         self.stun_port = stun_port
         self._logger = get_logger("NATDetector")
 
+    def _get_nat_info(self, local_port: int) -> tuple[str, str, int]:
+        """
+        Synchronous helper to get NAT info using pystun3.
+
+        :param int local_port: The local port to use for the STUN request.
+        :return tuple[str, str, int]: NAT type, public IP, public port.
+        """
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(("0.0.0.0", local_port))
+        try:
+            nat_type, result = stun.get_nat_type(
+                s,
+                "0.0.0.0",
+                local_port,
+                self.stun_host,
+                self.stun_port
+            )
+            external_ip = result.get("ExternalIP")
+            external_port = result.get("ExternalPort")
+        finally:
+            s.close()
+        return nat_type, external_ip, external_port
+
     async def detect(self, local_port: int = 54320) -> DiscoveryResult:
         """
         Detect the NAT type and discover the public IP and port.
@@ -33,16 +57,11 @@ class NATDetector:
         :return DiscoveryResult: The result of the NAT discovery operation.
         :raises RuntimeError: If detection fails or NAT type is not supported.
         """
-        loop = get_running_loop()
-        result = await loop.run_in_executor(
+        loop = asyncio.get_running_loop()
+        nat_type, external_ip, external_port = await loop.run_in_executor(
             None,
-            lambda: get_nat_type(
-                self.stun_host,
-                self.stun_port,
-                source_port=local_port,
-            ),
+            lambda: self._get_nat_info(local_port)
         )
-        nat_type, external_ip, external_port = result
         self._logger.info(
             f" 💡 NAT type: {nat_type}, Public IP: {external_ip}, Public Port: {external_port}"
         )
@@ -58,3 +77,4 @@ class NATDetector:
             public_ip=external_ip,
             public_port=external_port,
         )
+ 
