@@ -94,6 +94,7 @@ class P2PClient:
                     f"{self._server_url}/nodes", json=self._node.model_dump(mode="json")
                 )
                 response.raise_for_status()
+            self._logger.info(f" ✅ UDP server binding to 0.0.0.0:{self._node.local_port}")
             await self._udp_server.start("0.0.0.0", self._node.local_port)
             self._server_status = True
             self._logger.info(" ✅ Joined network successfully")
@@ -279,3 +280,14 @@ class P2PClient:
         :return str: A string representation of the P2PClient.
         """
         return f"P2PClient(node={self._node})"
+
+    def __eq__(self, other: object) -> bool:
+        """
+        Check if two Node objects are equal (for P2P logic, only public_ip and public_port).
+
+        :param other: The other object to compare with.
+        :return: True if the objects are equal, False otherwise.
+        """
+        if not isinstance(other, Node):
+            return False
+        return str(self.public_ip) == str(other.public_ip) and self.public_port == other.public_port

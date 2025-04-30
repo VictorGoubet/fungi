@@ -69,7 +69,13 @@ class UDPServer(asyncio.DatagramProtocol):
         :param int port: The port number to bind to.
         """
         loop = asyncio.get_running_loop()
-        await loop.create_datagram_endpoint(lambda: self, local_addr=(ip, port))
+        try:
+            transport, _ = await loop.create_datagram_endpoint(lambda: self, local_addr=(ip, port))
+            self._transport = transport
+            self._logger.info(f" ✅ UDP server started and bound to {ip}:{port}")
+        except Exception as e:
+            self._logger.error(f" ❌ Failed to bind UDP server to {ip}:{port}: {e}")
+            raise
 
     async def stop(self) -> None:
         """
