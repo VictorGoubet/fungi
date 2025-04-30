@@ -94,9 +94,7 @@ class P2PClient:
                     f"{self._server_url}/nodes", json=self._node.model_dump(mode="json")
                 )
                 response.raise_for_status()
-            await self._udp_server.start(
-                str(self._node.local_ip), self._node.local_port
-            )
+            await self._udp_server.start("0.0.0.0", self._node.local_port)
             self._server_status = True
             self._logger.info(" ✅ Joined network successfully")
             return ClientResponse(
@@ -248,6 +246,7 @@ class P2PClient:
         message = f"punch:{self._node.public_ip}:{self._node.public_port}"
         for _ in range(n_tries):
             if other_node.public_ip is not None and other_node.public_port is not None:
+                self._logger.info(f" 💡 Sending punch to {other_node.public_ip}:{other_node.public_port}")
                 await self.send_message(
                     message,
                     other_node.public_ip,
@@ -264,8 +263,12 @@ class P2PClient:
         """
         self._logger.info(f" 💡 Received message from {sender}: {message}")
         if message.startswith("punch"):
+            self._logger.info(f" 💡 Received punch from {sender}, sending pong and starting bidirectional punching.")
             self._udp_server.send_message("pong", sender[0], sender[1])
+            # Start sending punch messages back to the sender
+            create_task(self._send_punch_messages(Node(public_ip=sender[0], public_port=sender[1])))
         elif message.startswith("pong"):
+            self._logger.info(f" 💡 Received pong from {sender}")
             if self._udp_server._connection_callback:
                 self._udp_server._connection_callback()
 
