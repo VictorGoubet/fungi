@@ -158,7 +158,7 @@ class P2PClient:
             self._logger.error(f" ❌ Failed to get nodes: {e}")
             return []
 
-    async def connect_to(self, other_node: Node, timeout: int = 30) -> ClientResponse:
+    async def connect_to(self, other_node: Node, timeout: int = 8) -> ClientResponse:
         """
         Initiate a connection to another node using UDP hole punching.
 
@@ -166,7 +166,9 @@ class P2PClient:
         :param int timeout: The timeout in seconds.
         :return ClientResponse: The status and message of the operation.
         """
+        self._logger.info(f" 💡 Attempting to connect to node {other_node.public_ip}:{other_node.public_port} with timeout {timeout}s...")
         if not self._validate_connection_prerequisites(other_node):
+            self._logger.error(" ❌ Connection prerequisites not met.")
             return ClientResponse(
                 status="fail",
                 message="Connection prerequisites not met",
@@ -175,10 +177,16 @@ class P2PClient:
         self._udp_server.set_connection_callback(connection_established.set)
         punch_task = create_task(self._send_punch_messages(other_node))
         try:
+            self._logger.info(" 💡 Sending punch messages and waiting for connection...")
             await wait_for(connection_established.wait(), timeout=timeout)
+            self._logger.info(" ✅ Connection established!")
             return ClientResponse(status="success", message="Connection established")
         except TimeoutError:
+            self._logger.error(f" ❌ Connection attempt to {other_node.public_ip}:{other_node.public_port} timed out after {timeout}s.")
             return ClientResponse(status="fail", message="Connection attempt timed out")
+        except Exception as e:
+            self._logger.error(f" ❌ Error during connection attempt: {e}")
+            return ClientResponse(status="fail", message=f"Connection error: {e}")
         finally:
             punch_task.cancel()
             self._udp_server.set_connection_callback(None)
