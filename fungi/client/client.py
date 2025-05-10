@@ -34,25 +34,12 @@ class P2PClient:
             stun_host=config.stun_server_host, stun_port=config.stun_server_port
         )
 
-    async def detect_nat(self, local_port: int = 54320) -> ClientResponse:
+    async def discover_network_info(self, local_port: int = 54320) -> ClientResponse:
         """
-        Detects the NAT type and updates the node info.
-        :param int local_port: The local port to use for detection.
-        :return ClientResponse: The status and message of the operation.
-        """
-        try:
-            result: DiscoveryResult = await self._nat_detector.detect(local_port)
-            self._node.nat_type = result.nat_type
-            return ClientResponse(status="success", message=str(result.nat_type))
-        except Exception as e:
-            self._logger.error(f" ❌ NAT detection failed: {e}")
-            return ClientResponse(status="fail", message=str(e))
+        Uses STUN to get NAT type, public IP, and public port, updates the node, and returns a ClientResponse with the DiscoveryResult as result.
 
-    async def discover_public_ip(self, local_port: int = 54320) -> dict[str, object]:
-        """
-        Finds public IP/port and updates the node.
         :param int local_port: The local port to use for discovery.
-        :return dict[str, object]: Public IP, port, and NAT type.
+        :return ClientResponse: Status, message, and DiscoveryResult as result.
         """
         try:
             result: DiscoveryResult = await self._nat_detector.detect(local_port)
@@ -60,15 +47,18 @@ class P2PClient:
             self._node.public_ip = result.public_ip
             self._node.public_port = result.public_port
             self._node.local_port = local_port
-            return {
-                "status": "success",
-                "public_ip": result.public_ip,
-                "public_port": result.public_port,
-                "nat_type": result.nat_type,
-            }
+            return ClientResponse(
+                status="success",
+                message="Discovery successful",
+                result=result
+            )
         except Exception as e:
             self._logger.error(f" ❌ Discovery failed: {e}")
-            return {"status": "fail", "message": str(e)}
+            return ClientResponse(
+                status="fail",
+                message=str(e),
+                result=None
+            )
 
     async def join_network(self) -> ClientResponse:
         """

@@ -1,6 +1,6 @@
 from ipaddress import ip_address
 from logging import DEBUG, Handler, Logger, LogRecord
-from gradio import Blocks, Button, Dropdown, Markdown, Row, Textbox
+from gradio import Blocks, Button, Dropdown, Markdown, Row, Textbox, Column, Box
 
 from fungi.client.client import P2PClient
 from fungi.models.node import Node
@@ -69,31 +69,19 @@ class P2PNetworkLauncher:
         """
         self._chat_history += f"{message}\n"
 
-    async def _detect_nat(self) -> list[any]:
+    async def _discover_network_info(self) -> list[any]:
         """
-        Detect the NAT type and update the UI.
+        Discover NAT type, public IP, and port, and update the UI.
 
         :return list[any]: The updated UI components.
         """
-        result = await self._client.detect_nat()
-        if result.status == "success":
-            self._nat_type = str(result.message)
+        response = await self._client.discover_network_info()
+        if response.status == "success" and response.result:
+            self._nat_type = str(response.result.nat_type)
+            self._public_ip = response.result.public_ip
+            self._public_port = response.result.public_port
         else:
             self._nat_type = None
-        return await self._update_ui()
-
-    async def _discover_public_ip(self) -> list[any]:
-        """
-        Discover the public IP and port and update the UI.
-
-        :return list[any]: The updated UI components.
-        """
-        result = await self._client.discover_public_ip()
-        if result["status"] == "success":
-            self._public_ip = result["public_ip"]
-            self._public_port = result["public_port"]
-            self._nat_type = str(result["nat_type"])
-        else:
             self._public_ip = None
             self._public_port = None
         return await self._update_ui()
@@ -205,57 +193,49 @@ class P2PNetworkLauncher:
 
     def run(self) -> None:
         """
-        Run the P2P Network Launcher application.
+        Run the P2P Network Launcher application with improved UI.
         """
-        with Blocks() as demo:
-            Markdown("# P2P Network Launcher")
+        with Blocks(theme="soft") as demo:
+            Markdown("# 🌐 P2P Network Launcher", elem_id="main-title")
             with Row():
-                detect_nat_btn = Button("Detect NAT Type")
-                discover_ip_btn = Button("Discover Public IP/Port")
-                join_btn = Button("Join Network")
-                leave_btn = Button("Leave Network", interactive=False)
-                refresh_btn = Button("Refresh Nodes", interactive=False)
-
-            nat_type_output = Textbox(label="NAT Type", value="Unknown")
-            public_ip_output = Textbox(label="Public IP", value="Unknown")
-            public_port_output = Textbox(label="Public Port", value="Unknown")
-
-            node_selector = Dropdown(
-                label="Available Nodes", choices=[], interactive=False
-            )
-            connect_btn = Button("Connect to Node", interactive=False)
-            log_output = Textbox(
-                label="Logs", placeholder="Logs will appear here...", lines=10
-            )
-
-            with Row():
-                chat_message = Textbox(
-                    label="Chat Message", placeholder="Type your message here..."
+                with Column():
+                    with Box():
+                        Markdown("### Network Status")
+                        nat_type_output = Textbox(label="NAT Type", value="Unknown", interactive=False)
+                        public_ip_output = Textbox(label="Public IP", value="Unknown", interactive=False)
+                        public_port_output = Textbox(label="Public Port", value="Unknown", interactive=False)
+                        detect_nat_btn = Button("🔍 Detect NAT / Public IP / Port")
+                    with Box():
+                        Markdown("### Nodes")
+                        node_selector = Dropdown(
+                            label="Available Nodes", choices=[], interactive=False
+                        )
+                        with Row():
+                            join_btn = Button("🔗 Join Network")
+                            leave_btn = Button("❌ Leave Network", interactive=False)
+                            refresh_btn = Button("🔄 Refresh Nodes", interactive=False)
+                            connect_btn = Button("🔌 Connect to Node", interactive=False)
+                with Column():
+                    Markdown("### Logs")
+                    log_output = Textbox(
+                        label="Logs", placeholder="Logs will appear here...", lines=10, interactive=False
+                    )
+            with Box():
+                Markdown("### Chat")
+                with Row():
+                    chat_message = Textbox(
+                        label="Chat Message", placeholder="Type your message here..."
+                    )
+                    send_btn = Button("📤 Send", interactive=False)
+                chat_log_output = Textbox(
+                    label="Chat Log",
+                    placeholder="Chat messages will appear here...",
+                    lines=10,
+                    interactive=False
                 )
-                send_btn = Button("Send Message", interactive=False)
-            chat_log_output = Textbox(
-                label="Chat Log",
-                placeholder="Chat messages will appear here...",
-                lines=10,
-            )
 
             detect_nat_btn.click(
-                fn=self._detect_nat,
-                outputs=[
-                    log_output,
-                    nat_type_output,
-                    public_ip_output,
-                    public_port_output,
-                    node_selector,
-                    join_btn,
-                    leave_btn,
-                    refresh_btn,
-                    connect_btn,
-                    send_btn,
-                ],
-            )
-            discover_ip_btn.click(
-                fn=self._discover_public_ip,
+                fn=self._discover_network_info,
                 outputs=[
                     log_output,
                     nat_type_output,
