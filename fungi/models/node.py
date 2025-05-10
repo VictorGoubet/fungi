@@ -4,7 +4,7 @@ from .nat_type import NatType
 
 class Node(SQLModel, table=True):
     """
-    Represents a node in the P2P network (as a SQLModel table).
+    Represents a peer in the P2P network (SQLModel table).
     """
 
     id: int | None = Field(
@@ -56,24 +56,23 @@ class Node(SQLModel, table=True):
     @classmethod
     def get_example(cls) -> dict[str, any]:
         """
-        Dynamically build an example using the 'examples' metadata of each field.
+        Returns a sample node from the schema config.
+        :return dict[str, any]: Example node as a dictionary.
         """
         return cls.model_config["json_schema_extra"]["examples"][0]
 
     def __str__(self) -> str:
         """
-        String representation of the Node.
-
-        :return: A string representation of the Node.
+        Returns a string with the node's public IP and port.
+        :return str: String representation of the node.
         """
         return f"Node(public_ip={self.public_ip}, public_port={self.public_port})"
 
     def __eq__(self, other: object) -> bool:
         """
-        Check if two Node objects are equal (for P2P logic, only public_ip and public_port).
-
-        :param other: The other object to compare with.
-        :return: True if the objects are equal, False otherwise.
+        Checks if two nodes have the same public IP and port.
+        :param object other: The object to compare with.
+        :return bool: True if the nodes are equal, False otherwise.
         """
         if not isinstance(other, Node):
             return False
@@ -81,8 +80,7 @@ class Node(SQLModel, table=True):
 
     def __hash__(self) -> int:
         """
-        Generate a hash value for the Node.
-
-        :return: The hash value of the Node.
+        Hashes the node using its public and local addresses.
+        :return int: Hash value for the node.
         """
         return hash((self.public_ip, self.public_port, self.local_ip, self.local_port))

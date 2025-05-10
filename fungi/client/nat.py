@@ -8,7 +8,7 @@ import stun
 
 class NATDetector:
     """
-    Detects the NAT type and discovers the public IP and port using a STUN server.
+    Finds your public IP, port, and NAT type using a STUN server.
     """
 
     def __init__(
@@ -17,8 +17,7 @@ class NATDetector:
         stun_port: int = 19302,
     ) -> None:
         """
-        Initialize the NATDetector.
-
+        Set up the NAT detector with a STUN server.
         :param str stun_host: The STUN server host.
         :param int stun_port: The STUN server port.
         """
@@ -28,8 +27,7 @@ class NATDetector:
 
     def _get_nat_info(self, local_port: int) -> tuple[str, str, int]:
         """
-        Synchronous helper to get NAT info using pystun3.
-
+        Uses pystun3 to get NAT type, public IP, and port.
         :param int local_port: The local port to use for the STUN request.
         :return tuple[str, str, int]: NAT type, public IP, public port.
         """
@@ -51,8 +49,7 @@ class NATDetector:
 
     async def detect(self, local_port: int = 54320) -> DiscoveryResult:
         """
-        Detect the NAT type and discover the public IP and port.
-
+        Runs NAT detection and returns the result. Raises if unsupported NAT.
         :param int local_port: The local port to use for the STUN request.
         :return DiscoveryResult: The result of the NAT discovery operation.
         :raises RuntimeError: If detection fails or NAT type is not supported.

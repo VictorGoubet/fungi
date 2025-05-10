@@ -1,6 +1,5 @@
 from asyncio import Event, create_task, sleep, wait_for
 from logging import INFO, Logger
-from fungi.client.discovery import DiscoveryService
 from fungi.client.udp import UDPServer
 from fungi.models.node import Node
 from fungi.models.discovery import DiscoveryResult
@@ -8,11 +7,12 @@ from fungi.models.response import ClientResponse
 from fungi.utils.constants import config
 from fungi.utils.logger import get_logger
 from httpx import AsyncClient
+from fungi.client.nat import NATDetector
 
 
 class P2PClient:
     """
-    Main P2P client orchestrator for NAT detection, discovery, joining, connecting, and messaging.
+    Main class for NAT detection, peer discovery, joining, connecting, and messaging in the P2P network.
     """
 
     def __init__(
@@ -21,8 +21,7 @@ class P2PClient:
         logger: Logger = get_logger(name="P2P_Client", level=INFO),
     ) -> None:
         """
-        Initialize the P2PClient.
-
+        Set up the P2P client and its dependencies.
         :param str server_url: The URL of the signaling server.
         :param Logger logger: The logger instance to use.
         """
@@ -31,19 +30,18 @@ class P2PClient:
         self._server_url: str = server_url
         self._server_status: bool = False
         self._udp_server: UDPServer = UDPServer(self._handle_message)
-        self._discovery: DiscoveryService = DiscoveryService(
+        self._nat_detector: NATDetector = NATDetector(
             stun_host=config.stun_server_host, stun_port=config.stun_server_port
         )
 
     async def detect_nat(self, local_port: int = 54320) -> ClientResponse:
         """
-        Detect the NAT type and update the node.
-
+        Detects the NAT type and updates the node info.
         :param int local_port: The local port to use for detection.
         :return ClientResponse: The status and message of the operation.
         """
         try:
-            result: DiscoveryResult = await self._discovery.discover(local_port)
+            result: DiscoveryResult = await self._nat_detector.detect(local_port)
             self._node.nat_type = result.nat_type
             return ClientResponse(status="success", message=str(result.nat_type))
         except Exception as e:
@@ -52,13 +50,12 @@ class P2PClient:
 
     async def discover_public_ip(self, local_port: int = 54320) -> dict[str, object]:
         """
-        Discover public IP and port, update the node.
-
+        Finds public IP/port and updates the node.
         :param int local_port: The local port to use for discovery.
         :return dict[str, object]: Public IP, port, and NAT type.
         """
         try:
-            result: DiscoveryResult = await self._discovery.discover(local_port)
+            result: DiscoveryResult = await self._nat_detector.detect(local_port)
             self._node.nat_type = result.nat_type
             self._node.public_ip = result.public_ip
             self._node.public_port = result.public_port
@@ -75,8 +72,7 @@ class P2PClient:
 
     async def join_network(self) -> ClientResponse:
         """
-        Join the network by registering with the signaling server and starting UDP server.
-
+        Registers with the signaling server and starts the UDP server.
         :return ClientResponse: The status and message of the operation.
         """
         if self._server_status:
@@ -108,8 +104,7 @@ class P2PClient:
 
     async def leave_network(self) -> ClientResponse:
         """
-        Leave the network by deregistering from the signaling server and stopping UDP server.
-
+        Deregisters from the signaling server and stops the UDP server.
         :return ClientResponse: The status and message of the operation.
         """
         if not self._server_status:
@@ -138,8 +133,7 @@ class P2PClient:
 
     async def get_nodes(self) -> list[Node]:
         """
-        Get the list of current nodes on the network.
-
+        Returns the list of other nodes in the network.
         :return list[Node]: A list of current nodes on the network.
         """
         try:
@@ -155,12 +149,11 @@ class P2PClient:
             return nodes
         except Exception as e:
             self._logger.error(f" ❌ Failed to get nodes: {e}")
-            return []
+        return []
 
     async def connect_to(self, other_node: Node, timeout: int = 8) -> ClientResponse:
         """
-        Initiate a connection to another node using UDP hole punching.
-
+        Tries to connect to another node using UDP hole punching.
         :param Node other_node: The node to connect to.
         :param int timeout: The timeout in seconds.
         :return ClientResponse: The status and message of the operation.
@@ -197,8 +190,7 @@ class P2PClient:
         target_port: int,
     ) -> ClientResponse:
         """
-        Send a message to a specified target IP and port.
-
+        Sends a message to a given IP and port.
         :param str message: The message to send.
         :param str target_ip: The target IP address.
         :param int target_port: The target port number.
@@ -215,8 +207,7 @@ class P2PClient:
 
     def _validate_connection_prerequisites(self, other_node: Node) -> bool:
         """
-        Validate the prerequisites for establishing a connection.
-
+        Checks if the node is ready to connect to another peer.
         :param Node other_node: The other node to connect to.
         :return bool: True if the prerequisites are met, False otherwise.
         """
@@ -239,8 +230,7 @@ class P2PClient:
 
     async def _send_punch_messages(self, other_node: Node, n_tries: int = 30) -> None:
         """
-        Send punch messages to initiate hole punching.
-
+        Sends punch messages to help open the NAT.
         :param Node other_node: The node to send punch messages to.
         :param int n_tries: The number of tries to send punch messages.
         """
@@ -257,8 +247,7 @@ class P2PClient:
 
     def _handle_message(self, message: str, sender: tuple[str, int]) -> None:
         """
-        Handle an incoming message.
-
+        Handles incoming messages from other peers.
         :param str message: The received message.
         :param tuple[str, int] sender: The sender's address (IP, port).
         """
@@ -275,18 +264,16 @@ class P2PClient:
 
     def __str__(self) -> str:
         """
-        String representation of the P2PClient.
-
+        Returns a string with the node info.
         :return str: A string representation of the P2PClient.
         """
         return f"P2PClient(node={self._node})"
 
     def __eq__(self, other: object) -> bool:
         """
-        Check if two Node objects are equal (for P2P logic, only public_ip and public_port).
-
-        :param other: The other object to compare with.
-        :return: True if the objects are equal, False otherwise.
+        Checks if two nodes are the same (public IP/port).
+        :param object other: The other object to compare with.
+        :return bool: True if the objects are equal, False otherwise.
         """
         if not isinstance(other, Node):
             return False

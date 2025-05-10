@@ -161,3 +161,9 @@ Desktop.ini
 $RECYCLE.BIN/
 .fseventsd
 .apdisk
+
+# Ruff
+ruff_cache/
+ruff.log
+# Ruff configuration
+ruff.toml
